@@ -10,7 +10,11 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import com.kiroku.app.AppContainer
 import com.kiroku.app.IncomingShare
 import com.kiroku.app.ShareInbox
+import android.net.Uri
+import com.kiroku.app.data.AttachmentRepository
 import com.kiroku.app.data.CategoryEntity
+import com.kiroku.app.data.OwnerType
+import com.kiroku.app.data.PendingFile
 import com.kiroku.app.data.CategoryRepository
 import com.kiroku.app.data.FolderKeys
 import com.kiroku.app.data.LinkRepository
@@ -31,6 +35,10 @@ data class AddSheetState(
     val visible: Boolean = false,
     val url: String = "",
     val note: String = "",
+    val tags: List<String> = emptyList(),
+    /** Text typed in the tag field but not yet turned into a tag. */
+    val tagInput: String = "",
+    val files: List<PendingFile> = emptyList(),
     val category: String? = null,
     val titleHint: String? = null,
     val fromShare: Boolean = false,
@@ -46,6 +54,7 @@ sealed interface AddEvent {
     data class Saved(val folderKey: String, val folderLabel: String) : AddEvent
     data class OpenLink(val id: String) : AddEvent
     data class OpenNote(val id: String) : AddEvent
+    data class Message(val text: String) : AddEvent
 }
 
 /** App-wide "save a link" sheet. Lives above all screens so a share can open it anywhere. */
@@ -53,8 +62,60 @@ class AddLinkViewModel(
     private val links: LinkRepository,
     private val notes: NoteRepository,
     private val categories: CategoryRepository,
+    private val files: AttachmentRepository,
     private val shares: ShareInbox,
 ) : ViewModel() {
+
+    // ---- Tags ----
+
+    /** Typing a comma (or pressing Enter, see [commitTagInput]) turns the text into a tag. */
+    fun onTagInput(value: String) {
+        if (value.contains(',') || value.contains('\n')) {
+            val parts = value.split(',', '\n')
+            sheet = sheet.copy(tags = addTags(sheet.tags, parts.dropLast(1)), tagInput = parts.last().trimStart())
+        } else {
+            sheet = sheet.copy(tagInput = value)
+        }
+    }
+
+    fun commitTagInput() {
+        if (sheet.tagInput.isBlank()) return
+        sheet = sheet.copy(tags = addTags(sheet.tags, listOf(sheet.tagInput)), tagInput = "")
+    }
+
+    fun removeTag(tag: String) {
+        sheet = sheet.copy(tags = sheet.tags - tag)
+    }
+
+    private fun addTags(current: List<String>, raw: List<String>): List<String> {
+        val result = current.toMutableList()
+        raw.map { it.trim().removePrefix("#").trim() }.filter { it.isNotEmpty() }.forEach { tag ->
+            if (result.none { it.equals(tag, ignoreCase = true) }) result += tag
+        }
+        return result
+    }
+
+    // ---- Files ----
+
+    fun addFiles(uris: List<Uri>) {
+        if (uris.isEmpty()) return
+        viewModelScope.launch {
+            val picked = uris.map { files.describe(it) }
+            sheet = sheet.copy(files = (sheet.files + picked).distinctBy { it.uri })
+        }
+    }
+
+    fun removeFile(file: PendingFile) {
+        sheet = sheet.copy(files = sheet.files - file)
+    }
+
+    /** Copies picked files in after the link/note exists; returns how many failed. */
+    private suspend fun attachPending(type: String, ownerId: String, pending: List<PendingFile>): Int {
+        var failed = 0
+        pending.forEach { f -> runCatching { files.attach(type, ownerId, f.uri) }.onFailure { failed++ } }
+        return failed
+    }
+
 
     val folders: StateFlow<List<CategoryEntity>> =
         categories.observeAll().stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
@@ -102,7 +163,13 @@ class AddLinkViewModel(
         sheet = current.copy(saving = true, error = null, duplicateId = null)
         viewModelScope.launch {
             val result = try {
-                links.save(current.url, current.note, current.titleHint, current.category)
+                links.save(
+                    current.url,
+                    current.note,
+                    current.titleHint,
+                    current.category,
+                    addTags(current.tags, listOf(current.tagInput)),
+                )
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -111,7 +178,9 @@ class AddLinkViewModel(
             }
             when (result) {
                 is SaveResult.Saved -> {
+                    val failed = attachPending(OwnerType.LINK, result.item.id, current.files)
                     sheet = AddSheetState()
+                    if (failed > 0) eventChannel.send(AddEvent.Message("Saved, but $failed file(s) couldn't be attached"))
                     val known = folders.value.any { it.id == current.category }
                     eventChannel.send(
                         AddEvent.Saved(
@@ -144,6 +213,7 @@ class AddLinkViewModel(
         sheet = current.copy(saving = true)
         viewModelScope.launch {
             val note = notes.create(title = current.titleHint.orEmpty(), body = body)
+            attachPending(OwnerType.NOTE, note.id, current.files)
             sheet = AddSheetState()
             eventChannel.send(AddEvent.OpenNote(note.id))
         }
@@ -194,7 +264,7 @@ class AddLinkViewModel(
 
     companion object {
         fun factory(container: AppContainer) = viewModelFactory {
-            initializer { AddLinkViewModel(container.links, container.notes, container.categories, container.shares) }
+            initializer { AddLinkViewModel(container.links, container.notes, container.categories, container.attachments, container.shares) }
         }
     }
 }

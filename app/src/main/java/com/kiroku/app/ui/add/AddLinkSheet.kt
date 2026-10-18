@@ -1,6 +1,17 @@
 package com.kiroku.app.ui.add
 
+import android.text.format.Formatter
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.material.icons.filled.AttachFile
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Tag
+import androidx.compose.material3.InputChip
+import androidx.compose.ui.platform.LocalContext
+import com.kiroku.app.ui.components.AttachmentRow
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -51,7 +62,7 @@ import com.kiroku.app.ui.components.FolderDialog
 import com.kiroku.app.util.UrlUtils
 import kotlinx.coroutines.delay
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun AddLinkSheet(vm: AddLinkViewModel) {
     val state = vm.sheet
@@ -59,6 +70,10 @@ fun AddLinkSheet(vm: AddLinkViewModel) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val urlFocus = remember { FocusRequester() }
     val clipboard = LocalClipboardManager.current
+    val context = LocalContext.current
+    val pickFiles = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        vm.addFiles(uris)
+    }
     val folders by vm.folders.collectAsStateWithLifecycle()
     var creatingFolder by rememberSaveable { mutableStateOf(false) }
 
@@ -144,6 +159,63 @@ fun AddLinkSheet(vm: AddLinkViewModel) {
                 shape = MaterialTheme.shapes.medium,
                 modifier = Modifier.fillMaxWidth(),
             )
+
+            // Tags: type and press Enter or a comma.
+            if (state.tags.isNotEmpty()) {
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    state.tags.forEach { tag ->
+                        InputChip(
+                            selected = false,
+                            onClick = { vm.removeTag(tag) },
+                            enabled = !state.saving,
+                            label = { Text("#$tag") },
+                            trailingIcon = {
+                                Icon(Icons.Filled.Close, contentDescription = "Remove tag $tag", modifier = Modifier.size(16.dp))
+                            },
+                        )
+                    }
+                }
+            }
+            OutlinedTextField(
+                value = state.tagInput,
+                onValueChange = vm::onTagInput,
+                label = { Text("Tags (optional)") },
+                placeholder = { Text("Type a tag, then Enter or comma") },
+                leadingIcon = { Icon(Icons.Filled.Tag, contentDescription = null) },
+                singleLine = true,
+                enabled = !state.saving,
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                keyboardActions = KeyboardActions(onDone = { vm.commitTagInput() }),
+                shape = MaterialTheme.shapes.medium,
+                modifier = Modifier.fillMaxWidth(),
+            )
+
+            // Files to attach once the link is saved.
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    "Attachments",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = colors.onSurface,
+                    modifier = Modifier.weight(1f),
+                )
+                TextButton(onClick = { pickFiles.launch(arrayOf("*/*")) }, enabled = !state.saving) {
+                    Icon(Icons.Filled.AttachFile, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.size(6.dp))
+                    Text("Attach file")
+                }
+            }
+            state.files.forEach { file ->
+                AttachmentRow(
+                    name = file.name,
+                    mimeType = file.mimeType,
+                    detail = file.size?.let { Formatter.formatShortFileSize(context, it) },
+                    onClick = null,
+                    onRemove = { vm.removeFile(file) },
+                )
+            }
 
             state.error?.let { error ->
                 Text(error, style = MaterialTheme.typography.bodySmall, color = colors.error)

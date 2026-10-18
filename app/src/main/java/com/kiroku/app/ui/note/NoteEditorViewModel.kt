@@ -10,11 +10,23 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.kiroku.app.AppContainer
+import android.content.Intent
+import android.net.Uri
+import com.kiroku.app.data.AttachmentEntity
+import com.kiroku.app.data.AttachmentRepository
 import com.kiroku.app.data.NoteEntity
+import com.kiroku.app.data.OwnerType
 import com.kiroku.app.data.NoteRepository
 import com.kiroku.app.data.Status
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.receiveAsFlow
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -27,6 +39,7 @@ import java.util.UUID
 class NoteEditorViewModel(
     handle: SavedStateHandle,
     private val repo: NoteRepository,
+    private val files: AttachmentRepository,
     private val appScope: CoroutineScope,
 ) : ViewModel() {
 
@@ -106,17 +119,53 @@ class NoteEditorViewModel(
 
     fun delete() {
         write {
+            files.removeAllFor(OwnerType.NOTE, noteId)
             repo.delete(noteId)
             exists = false
         }
     }
 
-    fun isBlank(): Boolean = title.isBlank() && body.isBlank()
+    /** Nothing typed and nothing attached. */
+    fun isBlank(): Boolean = title.isBlank() && body.isBlank() && attachments.value.isEmpty()
 
-    private fun save() {
-        if (!loaded || gone) return
-        val now = System.currentTimeMillis()
-        val snapshot = NoteEntity(
+    // ---- Attachments ----
+
+    private val messageChannel = Channel<String>(Channel.BUFFERED)
+    val messages: Flow<String> = messageChannel.receiveAsFlow()
+
+    var attaching by mutableStateOf(false)
+        private set
+
+    val attachments: StateFlow<List<AttachmentEntity>> =
+        files.observeFor(OwnerType.NOTE, noteId).stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    fun attach(uris: List<Uri>) {
+        if (!loaded || gone || uris.isEmpty()) return
+        attaching = true
+        val snapshot = snapshot(System.currentTimeMillis())
+        appScope.launch(Dispatchers.Main) {
+            var failed = 0
+            writeLock.withLock {
+                // A note needs to exist before files can hang off it.
+                if (!exists) {
+                    repo.upsert(snapshot)
+                    exists = true
+                }
+                uris.forEach { uri -> runCatching { files.attach(OwnerType.NOTE, noteId, uri) }.onFailure { failed++ } }
+            }
+            attaching = false
+            if (failed > 0) messageChannel.send("Couldn't attach $failed file(s)")
+        }
+    }
+
+    fun removeAttachment(attachment: AttachmentEntity) {
+        appScope.launch { files.remove(attachment) }
+    }
+
+    fun openIntent(attachment: AttachmentEntity): Intent? =
+        if (files.fileOf(attachment).exists()) files.openIntent(attachment) else null
+
+    private fun snapshot(now: Long) = NoteEntity(
             id = noteId,
             title = title,
             body = body,
@@ -126,6 +175,11 @@ class NoteEditorViewModel(
             createdAt = createdAt,
             updatedAt = now,
         )
+
+    private fun save() {
+        if (!loaded || gone) return
+        val now = System.currentTimeMillis()
+        val snapshot = snapshot(now)
         updatedAt = now
         val blank = snapshot.isBlank()
         write {
@@ -147,7 +201,7 @@ class NoteEditorViewModel(
         // Don't keep empty notes around.
         write {
             val note = repo.getById(noteId)
-            if (note != null && note.isBlank()) repo.delete(noteId)
+            if (note != null && note.isBlank() && files.countFor(OwnerType.NOTE, noteId) == 0) repo.delete(noteId)
         }
     }
 
@@ -156,7 +210,7 @@ class NoteEditorViewModel(
         private const val KEY_NOTE_ID = "note_id"
 
         fun factory(container: AppContainer) = viewModelFactory {
-            initializer { NoteEditorViewModel(createSavedStateHandle(), container.notes, container.appScope) }
+            initializer { NoteEditorViewModel(createSavedStateHandle(), container.notes, container.attachments, container.appScope) }
         }
     }
 }

@@ -100,6 +100,7 @@ fun KirokuNavHost(container: AppContainer) {
                 }
                 is AddEvent.OpenLink -> nav.navigate("link/${event.id}")
                 is AddEvent.OpenNote -> nav.navigate("note/${event.id}")
+                is AddEvent.Message -> launch { snackbar.showSnackbar(event.text) }
             }
         }
     }

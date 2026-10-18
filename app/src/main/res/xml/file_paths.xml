@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Lets other apps open Kiroku's attachment copies (read-only, one file at a time). -->
+<paths>
+    <files-path name="attachments" path="attachments/" />
+</paths>

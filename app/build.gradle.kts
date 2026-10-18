@@ -13,8 +13,8 @@ android {
         applicationId = "com.kiroku.app"
         minSdk = 31 // Android 12
         targetSdk = 35
-        versionCode = 5
-        versionName = "0.3.2"
+        versionCode = 6
+        versionName = "0.4.0"
     }
 
     // One shared test key, kept in the repo, so APKs built in Android Studio and on GitHub

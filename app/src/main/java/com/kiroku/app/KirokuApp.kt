@@ -3,6 +3,7 @@ package com.kiroku.app
 import android.app.Application
 import android.content.Context
 import com.kiroku.app.backup.BackupManager
+import com.kiroku.app.data.AttachmentRepository
 import com.kiroku.app.data.CategoryRepository
 import com.kiroku.app.data.KirokuDatabase
 import com.kiroku.app.data.LinkRepository
@@ -49,5 +50,6 @@ class AppContainer(context: Context) {
     val categories = CategoryRepository(database, database.categoryDao(), database.linkDao())
     val backup = BackupManager(appContext, links, notes, categories)
     val prefs = AppPrefs(appContext)
+    val attachments = AttachmentRepository(appContext, database.attachmentDao())
     val shares = ShareInbox()
 }

@@ -57,6 +57,7 @@ class LinkRepository(
         note: String = "",
         titleHint: String? = null,
         category: String? = null,
+        tags: List<String> = emptyList(),
     ): SaveResult {
         val candidate = UrlUtils.extractUrl(rawInput) ?: rawInput
         val url = UrlUtils.normalize(candidate) ?: return SaveResult.InvalidUrl
@@ -70,6 +71,8 @@ class LinkRepository(
             category = category,
             sourceDomain = UrlUtils.domainOf(url),
             notes = note.trim(),
+            tags = tags.map { it.trim().removePrefix("#").trim() }.filter { it.isNotEmpty() }
+                .distinctBy { it.lowercase() },
             createdAt = now,
             updatedAt = now,
         )

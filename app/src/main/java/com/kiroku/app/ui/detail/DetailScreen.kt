@@ -84,6 +84,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.kiroku.app.data.FetchState
 import com.kiroku.app.data.LinkEntity
 import com.kiroku.app.data.Status
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import com.kiroku.app.ui.components.AttachmentsSection
 import com.kiroku.app.ui.components.CategoryPicker
 import com.kiroku.app.ui.components.FolderDialog
 import com.kiroku.app.ui.components.FolderIcons
@@ -109,6 +112,7 @@ fun DetailScreen(
     // Item deleted (or id unknown): leave the screen once.
     val gone = !state.loading && item == null
     LaunchedEffect(gone) { if (gone) onBack() }
+    LaunchedEffect(vm) { vm.messages.collect { snackbar.showSnackbar(it) } }
 
     Scaffold(
         topBar = {
@@ -378,6 +382,18 @@ private fun DetailContent(
             modifier = Modifier.fillMaxWidth(),
         )
 
+        val attachments by vm.attachments.collectAsStateWithLifecycle()
+        val pickFiles = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+            vm.attach(uris)
+        }
+        AttachmentsSection(
+            attachments = attachments,
+            attaching = vm.attaching,
+            onAdd = { pickFiles.launch(arrayOf("*/*")) },
+            onOpen = { attachment -> openAttachment(context, vm.openIntent(attachment)) },
+            onRemove = vm::removeAttachment,
+        )
+
         SectionLabel("Notes")
         OutlinedTextField(
             value = notes,
@@ -452,6 +468,18 @@ private fun FetchBanner(item: LinkEntity, onRetry: () -> Unit, onEditUrl: () -> 
 @Composable
 private fun SectionLabel(text: String) {
     Text(text, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onBackground)
+}
+
+private fun openAttachment(context: Context, intent: Intent?) {
+    if (intent == null) {
+        Toast.makeText(context, "This file is missing", Toast.LENGTH_SHORT).show()
+        return
+    }
+    try {
+        context.startActivity(intent)
+    } catch (e: ActivityNotFoundException) {
+        Toast.makeText(context, "No app on this phone can open this file", Toast.LENGTH_SHORT).show()
+    }
 }
 
 private fun openUrl(context: Context, url: String) {

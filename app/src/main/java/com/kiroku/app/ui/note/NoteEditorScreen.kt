@@ -56,6 +56,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
+import android.content.ActivityNotFoundException
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.kiroku.app.ui.components.AttachmentsSection
 import com.kiroku.app.ui.components.formatDateTime
 import kotlinx.coroutines.delay
 
@@ -73,6 +80,12 @@ fun NoteEditorScreen(
     val bodyFocus = remember { FocusRequester() }
 
     LaunchedEffect(vm.gone) { if (vm.gone) onBack() }
+    LaunchedEffect(vm) { vm.messages.collect { snackbar.showSnackbar(it) } }
+    val attachments by vm.attachments.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+    val pickFiles = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        vm.attach(uris)
+    }
     LaunchedEffect(vm.loaded) {
         if (vm.loaded && vm.isNew && vm.isBlank()) {
             delay(200)
@@ -205,6 +218,24 @@ fun NoteEditorScreen(
             )
 
             Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+                AttachmentsSection(
+                    attachments = attachments,
+                    attaching = vm.attaching,
+                    onAdd = { pickFiles.launch(arrayOf("*/*")) },
+                    onOpen = { attachment ->
+                        val intent = vm.openIntent(attachment)
+                        if (intent == null) {
+                            Toast.makeText(context, "This file is missing", Toast.LENGTH_SHORT).show()
+                        } else {
+                            try {
+                                context.startActivity(intent)
+                            } catch (e: ActivityNotFoundException) {
+                                Toast.makeText(context, "No app on this phone can open this file", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    },
+                    onRemove = vm::removeAttachment,
+                )
                 Spacer(Modifier.height(16.dp))
                 vm.updatedAt?.let {
                     Text(

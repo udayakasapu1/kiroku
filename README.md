@@ -50,7 +50,9 @@ then uninstall Gurthu.
 | Move a link to another folder | Open the link and pick a different folder chip |
 | Archive | Open the item → ⋮ → **Archive** (Undo appears briefly). Archived items are behind the archive icon in each space |
 | Retry details | Pull down inside a folder, or ⋮ → Retry fetching details |
-| Backup | ⋮ → Export backup / Import backup (JSON; folders, links and notes) |
+| Tags | Type them right in the save-a-link sheet (Enter or comma adds one), or later on the link's page |
+| Attach files | **Attach file** on a link's page, in a note, or while saving a link. Opens your Files app; files are copied into Kiroku. Tap a file to open it |
+| Backup | ⋮ → Export backup / Import backup (JSON; folders, links and notes; **attached files are not included**) |
 
 ## How it works
 
@@ -87,7 +89,7 @@ app/src/main/java/com/kiroku/app/
 
 **Database:** links are in `knowledge_items` with the same column names as the Engineering KB Supabase table
 (`category` holds the id of a row in `categories`, or null for Unsorted).
-Notes are in a separate `notes` table. Database version 2 (migration from 1 keeps all data). Every item's status is `saved` or `archived`.
+Notes are in a separate `notes` table. Database version 3 (migrations keep all data). Attachments: `attachments` table + copies in the app's private `files/attachments/`. Every item's status is `saved` or `archived`.
 
 ## Limits to know
 
