@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Kiroku single tanzaku mark, dark-background version (Kiroku Logo canvas, "Single tanzaku - dark"). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="100dp"
+    android:height="100dp"
+    android:viewportWidth="100"
+    android:viewportHeight="100">
+    <group>
+        <path
+            android:fillColor="#0EA5E9"
+            android:strokeColor="#0EA5E9"
+            android:strokeWidth="3"
+            android:strokeLineJoin="round"
+            android:pathData="M39,31 H69 V91 L54,82 L39,91 Z" />
+        <path
+            android:fillColor="#FFFFFF"
+            android:strokeColor="#FFFFFF"
+            android:strokeWidth="3"
+            android:strokeLineJoin="round"
+            android:pathData="M34,27 H64 V87 L49,78 L34,87 Z" />
+        <path
+            android:fillColor="#1F2937"
+            android:pathData="M45.6,36 a3.4,3.4 0 1,0 6.8,0 a3.4,3.4 0 1,0 -6.8,0 Z" />
+        <path
+            android:fillColor="#893727"
+            android:pathData="M48,36 L53.5,36 L62,9 L56.5,5.5 Z" />
+        <path
+            android:fillColor="#C0603F"
+            android:pathData="M44.5,36 L50.5,36 L46,5 L39.5,9 Z" />
+    </group>
+</vector>

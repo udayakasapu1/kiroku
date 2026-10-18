@@ -42,6 +42,7 @@ import androidx.compose.ui.unit.dp
 import com.kiroku.app.R
 import com.kiroku.app.ui.components.FolderDialog
 import com.kiroku.app.ui.components.FolderIcons
+import com.kiroku.app.ui.components.LogoTile
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -63,15 +64,7 @@ fun OnboardingScreen(vm: OnboardingViewModel, onDone: () -> Unit) {
                     .padding(horizontal = 24.dp, vertical = 24.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
-                Surface(color = Color(0xFF1F2937), shape = RoundedCornerShape(16.dp), modifier = Modifier.size(64.dp)) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Image(
-                            painter = painterResource(R.drawable.ic_kiroku_mark),
-                            contentDescription = "Kiroku logo",
-                            modifier = Modifier.size(54.dp),
-                        )
-                    }
-                }
+                LogoTile(size = 64.dp)
                 Text("Set up your folders", style = MaterialTheme.typography.headlineSmall, color = colors.onBackground)
                 Text(
                     "Kiroku sorts your saved links into folders. Pick a few to start with, or add your own. " +

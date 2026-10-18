@@ -2,6 +2,6 @@
     <!-- Only the window/splash background; everything else is styled in Compose (ui/theme). -->
     <style name="Theme.Kiroku" parent="android:Theme.Material.Light.NoActionBar">
         <item name="android:windowBackground">@color/window_bg</item>
-        <item name="android:windowSplashScreenBackground">@color/ic_launcher_background</item>
+        <item name="android:windowSplashScreenBackground">@color/window_bg</item>
     </style>
 </resources>

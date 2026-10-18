@@ -48,8 +48,26 @@ import com.kiroku.app.R
 
 enum class Space(val title: String) { LINKS("Links"), NOTES("Notes") }
 
-/** The logo tile colour (same as the app icon background). */
-private val KirokuInk = Color(0xFF1F2937)
+/** The Kiroku mark on a small tile, like the app icon (white in light mode, ink in dark mode). */
+@Composable
+fun LogoTile(size: androidx.compose.ui.unit.Dp, modifier: Modifier = Modifier) {
+    val colors = MaterialTheme.colorScheme
+    Surface(
+        color = colors.surface,
+        shape = RoundedCornerShape(size * 0.24f),
+        border = androidx.compose.foundation.BorderStroke(1.dp, colors.outlineVariant),
+        shadowElevation = 1.dp,
+        modifier = modifier.size(size),
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            Image(
+                painter = painterResource(R.drawable.ic_kiroku_mark),
+                contentDescription = null,
+                modifier = Modifier.size(size * 0.86f),
+            )
+        }
+    }
+}
 
 /**
  * Top of the Links and Notes home screens. Tapping the logo opens a menu to switch space.
@@ -89,15 +107,7 @@ fun AppHeader(
                         Modifier.padding(end = 4.dp, top = 2.dp, bottom = 2.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Surface(color = KirokuInk, shape = RoundedCornerShape(9.dp), modifier = Modifier.size(36.dp)) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Image(
-                                    painter = painterResource(R.drawable.ic_kiroku_mark),
-                                    contentDescription = null,
-                                    modifier = Modifier.size(30.dp),
-                                )
-                            }
-                        }
+                        LogoTile(size = 38.dp)
                         Spacer(Modifier.size(10.dp))
                         Column {
                             Text("Kiroku", style = MaterialTheme.typography.titleLarge, color = colors.onBackground)

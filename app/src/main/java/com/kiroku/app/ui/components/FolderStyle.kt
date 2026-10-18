@@ -124,19 +124,19 @@ fun folderPalette(): FolderPalette =
             bottom = Color(0xFF2A3647),
             content = Color(0xFFF8FAFC),
             secondary = Color(0xFFCBD5E1),
-            motif = Color(0xFF7DD3FC).copy(alpha = 0.22f),
+            motif = Color(0xFF7DD3FC).copy(alpha = 0.30f),
             iconBackground = Color(0xFF7DD3FC).copy(alpha = 0.16f),
             border = Color(0xFF475569),
         )
     } else {
         FolderPalette(
-            top = Color(0xFFE0F2FE),
-            bottom = Color(0xFFBAE6FD),
+            top = Color(0xFFF0F9FF),
+            bottom = Color(0xFFE0F2FE),
             content = Color(0xFF0C4A6E),
             secondary = Color(0xFF075985),
-            motif = Color(0xFF0EA5E9).copy(alpha = 0.20f),
+            motif = Color(0xFF0EA5E9).copy(alpha = 0.32f),
             iconBackground = Color.White.copy(alpha = 0.65f),
-            border = Color(0xFF7DD3FC),
+            border = Color(0xFFBAE6FD),
         )
     }
 
@@ -148,9 +148,9 @@ fun linkCountLabel(count: Int): String = when (count) {
 
 /** A folder outline: a tab on the top-left, rounded corners. */
 class FolderShape(
-    private val tabWidthFraction: Float = 0.46f,
-    private val tabHeight: Dp = 12.dp,
-    private val corner: Dp = 18.dp,
+    private val tabWidthFraction: Float = 0.42f,
+    private val tabHeight: Dp = 7.dp,
+    private val corner: Dp = 14.dp,
 ) : Shape {
     override fun createOutline(size: Size, layoutDirection: LayoutDirection, density: Density): Outline {
         val w = size.width
@@ -175,7 +175,7 @@ class FolderShape(
     }
 }
 
-/** A folder tile on the home screen. */
+/** A compact folder tile on the home screen (three per row on a phone). */
 @Composable
 fun FolderCard(
     name: String,
@@ -189,52 +189,28 @@ fun FolderCard(
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .aspectRatio(0.95f)
-            .shadow(elevation = 3.dp, shape = shape, clip = false)
+            .aspectRatio(0.9f)
             .clip(shape)
             .background(Brush.verticalGradient(listOf(palette.top, palette.bottom)))
-            .border(BorderStroke(1.dp, palette.border.copy(alpha = 0.5f)), shape)
+            .border(BorderStroke(1.dp, palette.border), shape)
             .clickable(onClickLabel = "Open $name", onClick = onClick),
     ) {
-        Canvas(Modifier.matchParentSize()) {
-            val flapTop = size.height * 0.40f
-            drawRect(
-                color = Color.White.copy(alpha = 0.10f),
-                topLeft = Offset(0f, flapTop),
-                size = Size(size.width, size.height - flapTop),
-            )
-            drawLine(
-                color = palette.border.copy(alpha = 0.6f),
-                start = Offset(0f, flapTop),
-                end = Offset(size.width, flapTop),
-                strokeWidth = 1.dp.toPx(),
-            )
-            drawMotif(icon.motif, palette.motif)
-        }
+        Canvas(Modifier.matchParentSize()) { drawMotif(icon.motif, palette.motif, 1.2.dp.toPx()) }
         Column(
             Modifier
                 .fillMaxSize()
-                .padding(start = 14.dp, end = 14.dp, top = 24.dp, bottom = 14.dp),
+                .padding(start = 10.dp, end = 10.dp, top = 16.dp, bottom = 10.dp),
         ) {
-            Box(
-                Modifier
-                    .size(42.dp)
-                    .clip(CircleShape)
-                    .background(palette.iconBackground),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(icon.vector, contentDescription = null, tint = palette.content, modifier = Modifier.size(24.dp))
-            }
+            Icon(icon.vector, contentDescription = null, tint = palette.content, modifier = Modifier.size(22.dp))
             Spacer(Modifier.weight(1f))
             Text(
                 name,
-                style = MaterialTheme.typography.titleMedium,
+                style = MaterialTheme.typography.titleSmall,
                 color = palette.content,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
-            Spacer(Modifier.height(4.dp))
-            Text(linkCountLabel(links), style = MaterialTheme.typography.labelMedium, color = palette.secondary)
+            Text(linkCountLabel(links), style = MaterialTheme.typography.labelSmall, color = palette.secondary)
         }
     }
 }
@@ -255,7 +231,7 @@ fun FolderHeader(
             .clip(RoundedCornerShape(bottomStart = 28.dp, bottomEnd = 28.dp))
             .background(Brush.verticalGradient(listOf(palette.top, palette.bottom))),
     ) {
-        Canvas(Modifier.matchParentSize()) { drawMotif(icon.motif, palette.motif) }
+        Canvas(Modifier.matchParentSize()) { drawMotif(icon.motif, palette.motif, 1.4.dp.toPx()) }
         Column(
             Modifier
                 .fillMaxWidth()
@@ -303,174 +279,107 @@ fun FolderLabel(name: String, icon: FolderIcon, modifier: Modifier = Modifier) {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Folder illustrations. Drawn mostly on the right-hand side so the text stays readable.
+// Folder illustrations: thin, faint line drawings tucked into the top-right corner.
 // ---------------------------------------------------------------------------------------------
 
-fun DrawScope.drawMotif(motif: Motif, color: Color) {
+/** [stroke] is the line width in px. */
+fun DrawScope.drawMotif(motif: Motif, color: Color, stroke: Float) {
     val w = size.width
     val h = size.height
-    val unit = minOf(w, h)
+    // Drawing box: top-right corner, square, about 40% of the tile's width.
+    val box = minOf(w * 0.40f, h * 0.55f)
+    val left = w - box - minOf(w, h) * 0.08f
+    val top = minOf(w, h) * 0.14f
+    fun p(x: Float, y: Float) = Offset(left + box * x, top + box * y)
+    val line = Stroke(width = stroke, cap = StrokeCap.Round, join = StrokeJoin.Round)
+
     when (motif) {
-        Motif.ASSEMBLY -> {
-            val step = unit * 0.12f
-            var x = w * 0.42f
-            while (x < w + h) {
-                drawLine(
-                    color = color,
-                    start = Offset(x, h),
-                    end = Offset(x + h * 0.55f, 0f),
-                    strokeWidth = step * 0.32f,
-                    cap = StrokeCap.Round,
-                )
-                x += step
-            }
+        Motif.ASSEMBLY -> for (i in 0..2) {
+            val o = i * 0.28f
+            drawLine(color, p(0.15f + o, 0.95f), p(0.45f + o, 0.05f), stroke, StrokeCap.Round)
         }
 
         Motif.GEARS -> {
-            drawGear(Offset(w * 0.80f, h * 0.36f), unit * 0.22f, 10, color)
-            drawGear(Offset(w * 0.95f, h * 0.78f), unit * 0.15f, 8, color)
+            val c = p(0.5f, 0.5f)
+            val r = box * 0.30f
+            drawCircle(color, r, c, style = line)
+            drawCircle(color, r * 0.35f, c, style = line)
+            for (i in 0 until 8) {
+                val a = Math.toRadians(45.0 * i)
+                val ca = cos(a).toFloat()
+                val sa = sin(a).toFloat()
+                drawLine(color, Offset(c.x + ca * r, c.y + sa * r), Offset(c.x + ca * r * 1.35f, c.y + sa * r * 1.35f), stroke, StrokeCap.Round)
+            }
         }
 
         Motif.HEX_NUTS -> {
-            drawNut(Offset(w * 0.80f, h * 0.36f), unit * 0.19f, color)
-            drawNut(Offset(w * 0.92f, h * 0.76f), unit * 0.12f, color)
-            drawNut(Offset(w * 0.60f, h * 0.20f), unit * 0.08f, color)
+            val c = p(0.5f, 0.5f)
+            val r = box * 0.40f
+            val path = Path()
+            for (i in 0 until 6) {
+                val a = Math.toRadians(60.0 * i + 30.0)
+                val x = c.x + r * cos(a).toFloat()
+                val y = c.y + r * sin(a).toFloat()
+                if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
+            }
+            path.close()
+            drawPath(path, color, style = line)
+            drawCircle(color, r * 0.42f, c, style = line)
         }
 
         Motif.CIRCUIT -> {
-            val sw = unit * 0.022f
             fun trace(points: List<Offset>) {
-                for (i in 0 until points.size - 1) {
-                    drawLine(color, points[i], points[i + 1], strokeWidth = sw, cap = StrokeCap.Round)
-                }
-                drawCircle(color, radius = sw * 2.2f, center = points.last())
-                drawCircle(color, radius = sw * 2.2f, center = points.first(), style = Stroke(sw))
+                for (i in 0 until points.size - 1) drawLine(color, points[i], points[i + 1], stroke, StrokeCap.Round)
+                drawCircle(color, stroke * 1.8f, points.last())
             }
-            trace(listOf(Offset(w * 0.50f, h * 0.16f), Offset(w * 0.68f, h * 0.16f), Offset(w * 0.76f, h * 0.26f), Offset(w * 0.96f, h * 0.26f)))
-            trace(listOf(Offset(w * 0.58f, h * 0.36f), Offset(w * 0.70f, h * 0.36f)))
-            trace(listOf(Offset(w * 0.94f, h * 0.50f), Offset(w * 0.94f, h * 0.94f)))
-            trace(listOf(Offset(w * 0.62f, h * 0.90f), Offset(w * 0.70f, h * 0.80f), Offset(w * 0.70f, h * 0.68f)))
-            val chip = unit * 0.22f
-            val chipTopLeft = Offset(w * 0.70f, h * 0.40f)
-            drawRoundRect(
-                color = color,
-                topLeft = chipTopLeft,
-                size = Size(chip, chip),
-                cornerRadius = CornerRadius(chip * 0.12f),
-                style = Stroke(sw * 1.4f),
-            )
-            for (i in 1..3) {
-                val y = chipTopLeft.y + chip * i / 4f
-                drawLine(color, Offset(chipTopLeft.x - chip * 0.15f, y), Offset(chipTopLeft.x, y), strokeWidth = sw)
-                drawLine(color, Offset(chipTopLeft.x + chip, y), Offset(chipTopLeft.x + chip * 1.15f, y), strokeWidth = sw)
-            }
+            trace(listOf(p(0.05f, 0.25f), p(0.45f, 0.25f), p(0.65f, 0.45f), p(0.95f, 0.45f)))
+            trace(listOf(p(0.05f, 0.65f), p(0.35f, 0.65f), p(0.5f, 0.85f), p(0.95f, 0.85f)))
         }
 
         Motif.RULER -> {
-            rotate(degrees = -24f, pivot = Offset(w * 0.78f, h * 0.45f)) {
-                val left = w * 0.42f
-                val top = h * 0.30f
-                val bandH = unit * 0.24f
-                val right = w * 1.4f
-                val sw = unit * 0.02f
-                drawRect(color, topLeft = Offset(left, top), size = Size(right - left, bandH), style = Stroke(sw))
-                var x = left + unit * 0.05f
-                var i = 0
-                while (x < right) {
-                    val len = if (i % 5 == 0) bandH * 0.55f else bandH * 0.28f
-                    drawLine(color, Offset(x, top), Offset(x, top + len), strokeWidth = sw * 0.8f)
-                    x += unit * 0.045f
-                    i++
-                }
+            drawLine(color, p(0.0f, 0.75f), p(1.0f, 0.75f), stroke, StrokeCap.Round)
+            for (i in 0..8) {
+                val x = 0.05f + i * 0.1125f
+                val len = if (i % 4 == 0) 0.40f else 0.20f
+                drawLine(color, p(x, 0.75f), p(x, 0.75f - len), stroke, StrokeCap.Round)
             }
         }
 
         Motif.ORG_CHART -> {
-            val box = Size(unit * 0.17f, unit * 0.11f)
-            val sw = unit * 0.022f
-            val root = Offset(w * 0.76f, h * 0.20f)
-            val kids = listOf(Offset(w * 0.58f, h * 0.56f), Offset(w * 0.76f, h * 0.56f), Offset(w * 0.94f, h * 0.56f))
-            val busY = h * 0.38f
-            drawLine(color, Offset(root.x, root.y + box.height / 2), Offset(root.x, busY), strokeWidth = sw)
-            drawLine(color, Offset(kids.first().x, busY), Offset(kids.last().x, busY), strokeWidth = sw)
-            kids.forEach { drawLine(color, Offset(it.x, busY), Offset(it.x, it.y - box.height / 2), strokeWidth = sw) }
-            val grandchild = Offset(w * 0.94f, h * 0.84f)
-            drawLine(color, Offset(kids.last().x, kids.last().y + box.height / 2), Offset(grandchild.x, grandchild.y - box.height / 2), strokeWidth = sw)
-            (listOf(root, grandchild) + kids).forEach { c ->
-                drawRoundRect(
-                    color = color,
-                    topLeft = Offset(c.x - box.width / 2, c.y - box.height / 2),
-                    size = box,
-                    cornerRadius = CornerRadius(box.height * 0.3f),
-                )
-            }
+            val bw = box * 0.26f
+            val bh = box * 0.16f
+            fun node(c: Offset) = drawRoundRect(
+                color, Offset(c.x - bw / 2, c.y - bh / 2), Size(bw, bh), CornerRadius(bh * 0.3f), style = line,
+            )
+            val root = p(0.5f, 0.15f)
+            val a = p(0.17f, 0.80f)
+            val b = p(0.83f, 0.80f)
+            val busY = top + box * 0.48f
+            drawLine(color, Offset(root.x, root.y + bh / 2), Offset(root.x, busY), stroke)
+            drawLine(color, Offset(a.x, busY), Offset(b.x, busY), stroke)
+            drawLine(color, Offset(a.x, busY), Offset(a.x, a.y - bh / 2), stroke)
+            drawLine(color, Offset(b.x, busY), Offset(b.x, b.y - bh / 2), stroke)
+            node(root); node(a); node(b)
         }
 
-        // Concentric arcs from the top-right corner (reading, ideas, learning, world).
         Motif.ARCS -> {
-            val center = Offset(w * 1.02f, h * 0.0f)
-            val sw = unit * 0.035f
-            var r = unit * 0.18f
-            while (r < unit * 0.95f) {
-                drawCircle(color, radius = r, center = center, style = Stroke(sw))
-                r += unit * 0.14f
-            }
+            val corner = Offset(w, 0f)
+            for (i in 1..3) drawCircle(color, box * 0.35f * i, corner, style = line)
         }
 
-        // A grid of dots on the right (general folders).
-        Motif.DOTS -> {
-            val step = unit * 0.11f
-            val radius = unit * 0.022f
-            var y = h * 0.14f
-            while (y < h * 0.98f) {
-                var x = w * 0.52f
-                while (x < w * 0.98f) {
-                    drawCircle(color, radius = radius, center = Offset(x, y))
-                    x += step
-                }
-                y += step
-            }
+        Motif.DOTS -> for (row in 0..2) for (col in 0..2) {
+            drawCircle(color, stroke * 1.4f, p(0.2f + col * 0.3f, 0.2f + row * 0.3f))
         }
 
         Motif.DASHED -> {
-            val inset = unit * 0.07f
-            val dash = unit * 0.06f
+            val inset = minOf(w, h) * 0.06f
             drawRoundRect(
                 color = color,
-                topLeft = Offset(inset, h * 0.16f),
-                size = Size(w - inset * 2, h * 0.84f - inset),
-                cornerRadius = CornerRadius(unit * 0.08f),
-                style = Stroke(width = unit * 0.02f, pathEffect = PathEffect.dashPathEffect(floatArrayOf(dash, dash * 0.7f))),
+                topLeft = Offset(inset, inset * 2f),
+                size = Size(w - inset * 2, h - inset * 3f),
+                cornerRadius = CornerRadius(inset * 1.5f),
+                style = Stroke(width = stroke, pathEffect = PathEffect.dashPathEffect(floatArrayOf(stroke * 5, stroke * 4))),
             )
         }
     }
-}
-
-private fun DrawScope.drawGear(center: Offset, radius: Float, teeth: Int, color: Color) {
-    val toothW = radius * 0.34f
-    val toothH = radius * 0.30f
-    for (i in 0 until teeth) {
-        rotate(degrees = i * 360f / teeth, pivot = center) {
-            drawRect(
-                color = color,
-                topLeft = Offset(center.x - toothW / 2, center.y - radius - toothH * 0.7f),
-                size = Size(toothW, toothH * 1.4f),
-            )
-        }
-    }
-    drawCircle(color, radius = radius, center = center, style = Stroke(width = radius * 0.32f))
-    drawCircle(color, radius = radius * 0.22f, center = center)
-}
-
-private fun DrawScope.drawNut(center: Offset, radius: Float, color: Color) {
-    val path = Path()
-    for (i in 0 until 6) {
-        val angle = Math.toRadians(60.0 * i + 30.0)
-        val x = center.x + radius * cos(angle).toFloat()
-        val y = center.y + radius * sin(angle).toFloat()
-        if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
-    }
-    path.close()
-    drawPath(path, color, style = Stroke(width = radius * 0.22f, join = StrokeJoin.Round))
-    drawCircle(color, radius = radius * 0.42f, center = center, style = Stroke(width = radius * 0.18f))
 }
