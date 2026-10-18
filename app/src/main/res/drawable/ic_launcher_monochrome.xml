@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Themed-icon (Android 13+) version: single colour, punched hole, shadow strip faded. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <group
+        android:scaleX="0.64"
+        android:scaleY="0.64"
+        android:translateX="21.0"
+        android:translateY="22.1">
+        <path
+            android:fillColor="#FFFFFFFF"
+            android:fillAlpha="0.5"
+            android:pathData="M64,26 H69 V96 L54,87 L39,96 V89 L49,83 L64,92 Z" />
+        <path
+            android:fillColor="#FFFFFFFF"
+            android:fillType="evenOdd"
+            android:pathData="M34,22 H64 V92 L49,83 L34,92 Z M45.6,31 a3.4,3.4 0 1,0 6.8,0 a3.4,3.4 0 1,0 -6.8,0 Z" />
+        <path
+            android:fillColor="#FFFFFFFF"
+            android:pathData="M48,31 L53.5,31 L62,6 L56.5,2.5 Z M44.5,31 L50.5,31 L46,3 L39.5,7 Z" />
+    </group>
+</vector>
