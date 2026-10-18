@@ -11,6 +11,7 @@ import com.kiroku.app.fetch.MetadataFetcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import okhttp3.OkHttpClient
 import java.util.concurrent.TimeUnit
 
@@ -21,6 +22,8 @@ class KirokuApp : Application() {
     override fun onCreate() {
         super.onCreate()
         container = AppContainer(this)
+        // Clean up duplicate folders left by older versions (e.g. two "Tier 1").
+        container.appScope.launch { runCatching { container.categories.mergeDuplicates() } }
     }
 }
 

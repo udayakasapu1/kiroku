@@ -47,6 +47,8 @@ fun FolderDialog(
     initialName: String = "",
     initialIcon: String = FolderIcons.all.first().key,
     confirmLabel: String = "Save",
+    /** Names of the other folders; a matching name (ignoring case/spaces) is refused. */
+    existingNames: List<String> = emptyList(),
     onDismiss: () -> Unit,
     onConfirm: (name: String, icon: String) -> Unit,
 ) {
@@ -54,7 +56,9 @@ fun FolderDialog(
     var icon by rememberSaveable { mutableStateOf(initialIcon) }
     val focus = remember { FocusRequester() }
     val colors = MaterialTheme.colorScheme
-    val canSave = name.isNotBlank()
+    val taken = remember(existingNames) { existingNames.map { CategoryRepository.nameKey(it) }.toSet() }
+    val duplicate = name.isNotBlank() && CategoryRepository.nameKey(name) in taken
+    val canSave = name.isNotBlank() && !duplicate
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -69,6 +73,12 @@ fun FolderDialog(
                     onValueChange = { name = it.take(CategoryRepository.MAX_NAME) },
                     label = { Text("Folder name") },
                     singleLine = true,
+                    isError = duplicate,
+                    supportingText = if (duplicate) {
+                        { Text("You already have a folder with this name") }
+                    } else {
+                        null
+                    },
                     keyboardOptions = KeyboardOptions(
                         capitalization = KeyboardCapitalization.Words,
                         imeAction = ImeAction.Done,

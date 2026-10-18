@@ -140,6 +140,7 @@ fun ManageFoldersScreen(vm: ManageFoldersViewModel, onBack: () -> Unit) {
         FolderDialog(
             title = "New folder",
             confirmLabel = "Create",
+            existingNames = folders.orEmpty().map { it.category.name },
             onDismiss = { creating = false },
             onConfirm = { name, icon ->
                 creating = false
@@ -153,6 +154,7 @@ fun ManageFoldersScreen(vm: ManageFoldersViewModel, onBack: () -> Unit) {
             title = "Edit folder",
             initialName = category.name,
             initialIcon = category.icon,
+            existingNames = folders.orEmpty().map { it.category }.filter { it.id != category.id }.map { it.name },
             onDismiss = { editing = null },
             onConfirm = { name, icon ->
                 editing = null

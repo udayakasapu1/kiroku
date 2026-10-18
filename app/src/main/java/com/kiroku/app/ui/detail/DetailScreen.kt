@@ -33,6 +33,7 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.outlined.Archive
 import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.PushPin
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Share
@@ -74,6 +75,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.input.KeyboardType
+import com.kiroku.app.data.UrlEditResult
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
@@ -101,6 +104,7 @@ fun DetailScreen(
     val context = LocalContext.current
     var menuOpen by remember { mutableStateOf(false) }
     var confirmDelete by remember { mutableStateOf(false) }
+    var editingUrl by remember { mutableStateOf(false) }
 
     // Item deleted (or id unknown): leave the screen once.
     val gone = !state.loading && item == null
@@ -150,6 +154,11 @@ fun DetailScreen(
                                     )
                                 }
                                 DropdownMenuItem(
+                                    text = { Text("Edit link") },
+                                    leadingIcon = { Icon(Icons.Outlined.Edit, null) },
+                                    onClick = { menuOpen = false; editingUrl = true },
+                                )
+                                DropdownMenuItem(
                                     text = { Text("Refresh details") },
                                     leadingIcon = { Icon(Icons.Outlined.Refresh, null) },
                                     onClick = { menuOpen = false; vm.retryFetch() },
@@ -178,12 +187,21 @@ fun DetailScreen(
             DetailContent(
                 item = item,
                 vm = vm,
+                onEditUrl = { editingUrl = true },
                 modifier = Modifier
                     .padding(padding)
                     .consumeWindowInsets(padding)
                     .imePadding(),
             )
         }
+    }
+
+    if (editingUrl && item != null) {
+        EditUrlDialog(
+            initialUrl = item.url,
+            vm = vm,
+            onDone = { editingUrl = false },
+        )
     }
 
     if (confirmDelete) {
@@ -205,7 +223,12 @@ fun DetailScreen(
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun DetailContent(item: LinkEntity, vm: DetailViewModel, modifier: Modifier = Modifier) {
+private fun DetailContent(
+    item: LinkEntity,
+    vm: DetailViewModel,
+    onEditUrl: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val colors = MaterialTheme.colorScheme
     val context = LocalContext.current
     val folders by vm.folders.collectAsStateWithLifecycle()
@@ -255,7 +278,7 @@ private fun DetailContent(item: LinkEntity, vm: DetailViewModel, modifier: Modif
             )
         }
 
-        FetchBanner(item, onRetry = vm::retryFetch)
+        FetchBanner(item, onRetry = vm::retryFetch, onEditUrl = onEditUrl)
 
         Row(verticalAlignment = Alignment.CenterVertically) {
             if (folder != null) FolderLabel(folder.name, FolderIcons.of(folder.icon))
@@ -381,6 +404,7 @@ private fun DetailContent(item: LinkEntity, vm: DetailViewModel, modifier: Modif
         FolderDialog(
             title = "New folder",
             confirmLabel = "Create",
+            existingNames = folders.map { it.name },
             onDismiss = { creatingFolder = false },
             onConfirm = { name, icon ->
                 creatingFolder = false
@@ -391,7 +415,7 @@ private fun DetailContent(item: LinkEntity, vm: DetailViewModel, modifier: Modif
 }
 
 @Composable
-private fun FetchBanner(item: LinkEntity, onRetry: () -> Unit) {
+private fun FetchBanner(item: LinkEntity, onRetry: () -> Unit, onEditUrl: () -> Unit) {
     val colors = MaterialTheme.colorScheme
     when (item.fetchState) {
         FetchState.PENDING -> Surface(color = colors.surfaceContainerHigh, shape = MaterialTheme.shapes.medium) {
@@ -418,6 +442,7 @@ private fun FetchBanner(item: LinkEntity, onRetry: () -> Unit) {
                     color = colors.onSurfaceVariant,
                     modifier = Modifier.weight(1f),
                 )
+                TextButton(onClick = onEditUrl) { Text("Edit link") }
                 TextButton(onClick = onRetry) { Text("Retry") }
             }
         }
@@ -444,4 +469,59 @@ private fun shareLink(context: Context, item: LinkEntity) {
         item.title?.let { putExtra(Intent.EXTRA_SUBJECT, it) }
     }
     context.startActivity(Intent.createChooser(send, null))
+}
+
+/** Change a saved link's address, e.g. when it was mistyped or its details couldn't be fetched. */
+@Composable
+private fun EditUrlDialog(initialUrl: String, vm: DetailViewModel, onDone: () -> Unit) {
+    var url by rememberSaveable { mutableStateOf(initialUrl) }
+    var error by remember { mutableStateOf<String?>(null) }
+    var saving by remember { mutableStateOf(false) }
+
+    fun save() {
+        if (saving || url.isBlank()) return
+        saving = true
+        error = null
+        vm.editUrl(url) { result ->
+            saving = false
+            val message = when (result) {
+                UrlEditResult.Updated, UrlEditResult.Unchanged -> null
+                UrlEditResult.Invalid -> "That doesn't look like a web link. It should look like https://example.com/page"
+                is UrlEditResult.Duplicate -> "Another saved link already has this address: \"${result.item.displayTitle()}\""
+            }
+            error = message
+            if (message == null) onDone()
+        }
+    }
+
+    AlertDialog(
+        onDismissRequest = { if (!saving) onDone() },
+        title = { Text("Edit link") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(
+                    value = url,
+                    onValueChange = { url = it; error = null },
+                    label = { Text("Link") },
+                    singleLine = true,
+                    isError = error != null,
+                    enabled = !saving,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Done),
+                    keyboardActions = KeyboardActions(onDone = { save() }),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Text(
+                    error ?: "Saving fetches the page's title, description and image again.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (error != null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = ::save, enabled = !saving && url.isNotBlank()) { Text("Save") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDone, enabled = !saving) { Text("Cancel") }
+        },
+    )
 }

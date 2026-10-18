@@ -35,7 +35,8 @@ class OnboardingViewModel(
     fun addCustom(name: String, icon: String) {
         val clean = name.trim()
         if (clean.isEmpty()) return
-        val existing = options.firstOrNull { it.name.equals(clean, ignoreCase = true) }
+        val key = com.kiroku.app.data.CategoryRepository.nameKey(clean)
+        val existing = options.firstOrNull { com.kiroku.app.data.CategoryRepository.nameKey(it.name) == key }
         if (existing != null) {
             if (existing !in selected) selected.add(existing)
             return

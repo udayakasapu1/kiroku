@@ -17,6 +17,14 @@ import kotlinx.coroutines.flow.Flow
 import java.util.UUID
 import java.util.concurrent.TimeUnit
 
+sealed interface UrlEditResult {
+    data object Updated : UrlEditResult
+    /** Same address as before; details are fetched again. */
+    data object Unchanged : UrlEditResult
+    data object Invalid : UrlEditResult
+    data class Duplicate(val item: LinkEntity) : UrlEditResult
+}
+
 sealed interface SaveResult {
     data class Saved(val item: LinkEntity) : SaveResult
     data class AlreadySaved(val item: LinkEntity) : SaveResult
@@ -103,6 +111,26 @@ class LinkRepository(
                 updatedAt = System.currentTimeMillis(),
             )
         )
+    }
+
+    /** Changes a saved link's address and fetches its details again. */
+    suspend fun updateUrl(id: String, rawInput: String): UrlEditResult {
+        val candidate = UrlUtils.extractUrl(rawInput) ?: rawInput
+        val url = UrlUtils.normalize(candidate) ?: return UrlEditResult.Invalid
+        val current = dao.getById(id) ?: return UrlEditResult.Invalid
+        if (url == current.url) {
+            refetch(id)
+            return UrlEditResult.Unchanged
+        }
+        dao.getByUrl(url)?.let { if (it.id != id) return UrlEditResult.Duplicate(it) }
+        try {
+            dao.setUrl(id, url, UrlUtils.domainOf(url), now())
+        } catch (e: SQLiteConstraintException) {
+            dao.getByUrl(url)?.let { return UrlEditResult.Duplicate(it) }
+            throw e
+        }
+        enqueueFetch(id)
+        return UrlEditResult.Updated
     }
 
     suspend fun markFetchFailed(id: String, message: String) =

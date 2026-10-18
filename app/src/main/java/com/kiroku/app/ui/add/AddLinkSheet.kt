@@ -189,6 +189,7 @@ fun AddLinkSheet(vm: AddLinkViewModel) {
         FolderDialog(
             title = "New folder",
             confirmLabel = "Create",
+            existingNames = folders.map { it.name },
             onDismiss = { creatingFolder = false },
             onConfirm = { name, icon ->
                 creatingFolder = false

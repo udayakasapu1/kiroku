@@ -76,23 +76,38 @@ class BackupManager(
         var importedFolders = 0
         var skipped = 0
 
+        // Folder ids in the backup -> folder ids here (a same-named folder is reused, never duplicated).
+        val folderIds = mutableMapOf<String, String>()
         if (folderArray != null) {
             for (i in 0 until folderArray.length()) {
                 val folder = folderArray.optJSONObject(i)?.let { parseFolder(it) } ?: continue
-                if (categories.insertImported(folder)) importedFolders++
+                val sameName = categories.findByName(folder.name)
+                when {
+                    sameName != null -> folderIds[folder.id] = sameName.id
+                    categories.insertImported(folder) -> {
+                        importedFolders++
+                        folderIds[folder.id] = folder.id
+                    }
+                    else -> folderIds[folder.id] = folder.id // same id already here
+                }
             }
         }
         // Map whatever the backup calls a folder to a folder that exists here.
-        val known = categories.getAll().toMutableList()
         suspend fun resolveFolder(value: String?): String? {
             val v = value?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+            folderIds[v]?.let { return it }
+            val known = categories.getAll()
             known.firstOrNull { it.id == v }?.let { return it.id }
-            known.firstOrNull { it.name.equals(v, ignoreCase = true) }?.let { return it.id }
-            // Older Kiroku backups used built-in keys ("oem", "tier1", …): recreate those folders.
+            categories.findByName(v)?.let { return it.id }
+            // Older Kiroku backups used built-in keys ("oem", "tier1", …).
             val legacy = FolderSuggestions.legacy.firstOrNull { it.first == v.lowercase() } ?: return null
+            categories.findByName(legacy.second)?.let {
+                folderIds[v] = it.id
+                return it.id
+            }
             val created = CategoryEntity(legacy.first, legacy.second, legacy.third, known.size, System.currentTimeMillis())
             if (categories.insertImported(created)) importedFolders++
-            known += created
+            folderIds[v] = created.id
             return created.id
         }
 

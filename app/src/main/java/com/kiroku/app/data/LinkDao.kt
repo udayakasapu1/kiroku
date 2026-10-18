@@ -80,6 +80,20 @@ interface LinkDao {
     @Query("UPDATE knowledge_items SET category = NULL, updated_at = :now WHERE category = :categoryId")
     suspend fun clearCategory(categoryId: String, now: Long)
 
+    @Query("UPDATE knowledge_items SET category = :to, updated_at = :now WHERE category = :from")
+    suspend fun moveCategory(from: String, to: String, now: Long)
+
+    /** New address: old page details are cleared and fetched again. */
+    @Query(
+        """
+        UPDATE knowledge_items
+        SET url = :url, source_domain = :domain, description = NULL, preview_image_url = NULL,
+            site_name = NULL, fetch_state = 'PENDING', fetch_error = NULL, updated_at = :now
+        WHERE id = :id
+        """
+    )
+    suspend fun setUrl(id: String, url: String, domain: String?, now: Long)
+
     @Query("UPDATE knowledge_items SET status = :status, updated_at = :now WHERE id = :id")
     suspend fun setStatus(id: String, status: String, now: Long)
 

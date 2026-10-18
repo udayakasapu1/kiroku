@@ -160,6 +160,7 @@ fun HomeScreen(
         FolderDialog(
             title = "New folder",
             confirmLabel = "Create",
+            existingNames = state?.categories.orEmpty().map { it.name },
             onDismiss = { newFolder = false },
             onConfirm = { name, icon ->
                 newFolder = false

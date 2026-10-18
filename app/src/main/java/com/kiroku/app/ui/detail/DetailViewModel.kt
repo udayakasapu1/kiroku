@@ -11,6 +11,7 @@ import com.kiroku.app.data.CategoryEntity
 import com.kiroku.app.data.CategoryRepository
 import com.kiroku.app.data.LinkEntity
 import com.kiroku.app.data.LinkRepository
+import com.kiroku.app.data.UrlEditResult
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.flow.SharingStarted
@@ -55,6 +56,14 @@ class DetailViewModel(
     private fun write(block: suspend LinkRepository.() -> Unit) {
         appScope.launch(start = CoroutineStart.UNDISPATCHED) {
             writeLock.withLock { repository.block() }
+        }
+    }
+
+    /** Changes the link's address; [onResult] runs on the main thread. */
+    fun editUrl(raw: String, onResult: (UrlEditResult) -> Unit) {
+        viewModelScope.launch {
+            val result = writeLock.withLock { repository.updateUrl(id, raw) }
+            onResult(result)
         }
     }
 
