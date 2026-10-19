@@ -58,6 +58,27 @@ jobs:
       - name: Unit tests
         run: ./gradlew --no-daemon testDebugUnitTest
 
+      # One line per test class (shown as notes on the run), and the build fails if the
+      # web inbox sync tests didn't actually run.
+      - name: Test report
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import glob, sys, xml.etree.ElementTree as ET
+          bad = False
+          for f in sorted(glob.glob('app/build/test-results/testDebugUnitTest/*.xml')):
+              s = ET.parse(f).getroot()
+              name = s.get('name').split('.')[-1]
+              t, fl, er, sk = (int(s.get(k)) for k in ('tests', 'failures', 'errors', 'skipped'))
+              print(f"::notice title={name}::{t - fl - er - sk} passed, {sk} skipped, {fl + er} failed of {t}")
+              for case in s.iter('testcase'):
+                  if case.find('failure') is not None or case.find('error') is not None:
+                      print(f"::error title={name}.{case.get('name')}::failed")
+              if name == 'WebInboxSyncTest' and (sk or t == 0):
+                  print("::error title=WebInboxSyncTest::sync tests were skipped"); bad = True
+          sys.exit(1 if bad else 0)
+          PY
+
       - name: Build APK
         run: ./gradlew --no-daemon assembleDebug
 
