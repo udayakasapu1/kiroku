@@ -89,6 +89,23 @@ jobs:
           cp app/build/outputs/apk/debug/app-debug.apk "out/kiroku-$VERSION.apk"
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
 
+      # Release notes: this version's section of CHANGELOG.md plus install steps.
+      - name: Release notes
+        run: |
+          python3 - <<'PY'
+          import os, re
+          v = os.environ["VERSION"]
+          text = open("CHANGELOG.md", encoding="utf-8").read()
+          m = re.search(r"^## " + re.escape(v) + r"\b.*?$(.*?)(?=^## |\Z)", text, re.S | re.M)
+          head = re.search(r"^## " + re.escape(v) + r"\b.*$", text, re.M)
+          notes = (head.group(0)[3:] + "\n" + m.group(1).strip()) if m else "See CHANGELOG.md."
+          sha = os.environ["GITHUB_SHA"]
+          notes += ("\n\n---\n**Install:** open this page on your phone, tap the .apk below, then Install. "
+                    "It installs over your current Kiroku and keeps your data.\n\n"
+                    "All versions: [CHANGELOG.md](https://github.com/udayakasapu1/kiroku/blob/main/CHANGELOG.md) · Built from " + sha[:7] + ".\n")
+          open("out/notes.md", "w", encoding="utf-8").write(notes)
+          PY
+
       - uses: actions/upload-artifact@v4
         with:
           name: kiroku-${{ env.VERSION }}
@@ -105,6 +122,4 @@ jobs:
           name: Kiroku ${{ env.VERSION }}
           files: out/*.apk
           make_latest: true
-          body: |
-            Install on Android: open this page on your phone, tap the .apk below, then Install.
-            Built from ${{ github.sha }}.
+          body_path: out/notes.md

@@ -8,6 +8,9 @@ The page's title, description and preview image are fetched in the background wh
 - Minimum Android 12 (API 31)
 - No account, no server: everything lives on the phone
 
+
+What changed in each version: [CHANGELOG.md](CHANGELOG.md).
+
 ## Two spaces: Links and Notes
 
 Tap the Kiroku logo (top left) to switch between **Links** and **Notes**. The app reopens in the space you used last.
