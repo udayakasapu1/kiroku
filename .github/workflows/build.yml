@@ -13,6 +13,17 @@ jobs:
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      INBOX_TEST_URL: http://localhost:3000
+      INBOX_TEST_JWT_SECRET: kiroku-ci-only-secret-0123456789-abcdefghij
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
     steps:
       - uses: actions/checkout@v4
 
@@ -22,6 +33,27 @@ jobs:
           java-version: "17"
 
       - uses: gradle/actions/setup-gradle@v4
+
+      # A Supabase-like server for the web inbox tests: Postgres with the inbox script,
+      # behind PostgREST (the API layer Supabase uses).
+      - name: Start test inbox server
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -v ON_ERROR_STOP=1 -q <<'SQL'
+          create role anon nologin; create role authenticated nologin;
+          create role authenticator login noinherit password 'auth';
+          grant anon, authenticated to authenticator;
+          grant usage on schema public to anon, authenticated;
+          SQL
+          psql -h localhost -U postgres -v ON_ERROR_STOP=1 -q -f supabase/kiroku_inbox.sql
+          psql -h localhost -U postgres -v ON_ERROR_STOP=1 -q -f supabase/kiroku_inbox.sql   # safe to run twice
+          curl -sSL https://github.com/PostgREST/postgrest/releases/download/v12.2.3/postgrest-v12.2.3-linux-static-x64.tar.xz | tar -xJ
+          PGRST_DB_URI="postgres://authenticator:auth@localhost:5432/postgres" PGRST_DB_SCHEMAS=public \
+            PGRST_DB_ANON_ROLE=anon PGRST_JWT_SECRET="$INBOX_TEST_JWT_SECRET" PGRST_SERVER_PORT=3000 \
+            nohup ./postgrest > postgrest.log 2>&1 &
+          for i in $(seq 1 30); do curl -s localhost:3000/ > /dev/null && break; sleep 1; done
+          curl -s localhost:3000/ > /dev/null || { cat postgrest.log; exit 1; }
 
       - name: Unit tests
         run: ./gradlew --no-daemon testDebugUnitTest

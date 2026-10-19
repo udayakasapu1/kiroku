@@ -123,17 +123,25 @@ class MetadataFetcher(private val client: OkHttpClient) {
     }
 
     /** Titles of "please wait / enable JavaScript / blocked" pages, not of the page itself. */
-    private fun isPlaceholderTitle(title: String): Boolean {
-        val t = title.lowercase().trim()
-        return t.length < 2 || placeholderTitles.any { t == it || t.startsWith(it) } ||
-            t.contains("enable javascript") || t.contains("javascript is required") ||
-            t.contains("javascript required") || t.contains("browser is not supported")
+    internal fun isPlaceholderTitle(title: String): Boolean {
+        val t = title.lowercase().trim().trimEnd('.', '…', '!', ' ')
+        return t.length < 2 || t in placeholderExact || placeholderStarts.any { t.startsWith(it) } ||
+            placeholderContains.any { t.contains(it) }
     }
 
-    private val placeholderTitles = listOf(
-        "just a moment", "attention required", "access denied", "loading", "please wait", "redirecting",
-        "403 forbidden", "forbidden", "404 not found", "not found", "error", "untitled", "document",
-        "security check", "are you a robot", "captcha", "verifying", "one moment", "checking your browser",
+    // Whole title only: "Error" is a placeholder, "Error codes for BMS" is not.
+    private val placeholderExact = setOf(
+        "loading", "please wait", "redirecting", "forbidden", "not found", "error", "untitled", "document",
+        "verifying", "one moment", "access denied", "403 forbidden", "404 not found", "page not found",
+        "home", "index", "null", "undefined",
+    )
+    private val placeholderStarts = listOf(
+        "just a moment", "attention required", "checking your browser", "are you a robot", "security check",
+        "access denied |", "access denied -", "verifying you are human",
+    )
+    private val placeholderContains = listOf(
+        "enable javascript", "javascript is required", "javascript required", "javascript is disabled",
+        "browser is not supported", "unsupported browser",
     )
 
     private fun String.clean(maxLength: Int): String? =

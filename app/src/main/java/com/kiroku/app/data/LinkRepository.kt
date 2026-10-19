@@ -153,10 +153,12 @@ class LinkRepository(
         return ids.size
     }
 
-    /** Sets a title typed by the user. Clearing it lets the next fetch fill in the page's title. */
+    /** Sets a title typed by the user. Clearing it fetches the page's own title again. */
     suspend fun updateTitle(id: String, title: String) {
         val clean = title.trim().takeIf { it.isNotEmpty() }
+        val before = dao.getById(id) ?: return
         dao.setTitle(id, clean, clean != null, now())
+        if (clean == null && !before.title.isNullOrBlank()) refetch(id)
     }
 
     suspend fun updateNotes(id: String, notes: String) = dao.setNotes(id, notes, now())

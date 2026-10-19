@@ -13,8 +13,8 @@ android {
         applicationId = "com.kiroku.app"
         minSdk = 31 // Android 12
         targetSdk = 35
-        versionCode = 9
-        versionName = "0.7.0"
+        versionCode = 10
+        versionName = "0.7.1"
     }
 
     // One shared test key, kept in the repo, so APKs built in Android Studio and on GitHub
@@ -52,6 +52,18 @@ android {
     buildFeatures {
         compose = true
     }
+    testOptions {
+        unitTests {
+            isIncludeAndroidResources = true
+            all { test ->
+                // Web inbox sync tests use a local PostgREST when these are set (see build.yml).
+                listOf("INBOX_TEST_URL", "INBOX_TEST_JWT_SECRET").forEach { name ->
+                    System.getenv(name)?.let { test.environment(name, it) }
+                }
+                test.testLogging { events("passed", "skipped", "failed"); exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL }
+            }
+        }
+    }
 }
 
 ksp {
@@ -88,4 +100,8 @@ dependencies {
     implementation("io.coil-kt:coil-compose:2.7.0")
 
     testImplementation("junit:junit:4.13.2")
+    testImplementation("org.robolectric:robolectric:4.14.1")
+    testImplementation("androidx.test:core:1.6.1")
+    testImplementation("androidx.work:work-testing:2.10.0")
+    testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")
 }

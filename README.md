@@ -74,9 +74,11 @@ One-time setup:
 
 Links saved on the web page stay listed there for 60 days under "Recently saved here", with contacts, and
 can still be edited. Edits reach the phone on its next check and change only the fields you edited on the web.
+The phone sends its current version back on each check, so titles it fetched and edits made on the phone show
+on the web page too. Links deleted on the phone leave the web list.
 After you click Save, the form stays open on that link, so anything you missed can be added right away.
 
-If you set up the inbox with Kiroku 0.6.0, run the setup script once more (it upgrades the inbox, nothing is lost).
+After updating Kiroku, run the setup script once more (it upgrades the inbox, nothing is lost).
 
 The setup link holds your inbox key, so keep it private. "Disconnect all browsers" in the app makes a new key.
 

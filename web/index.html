@@ -163,7 +163,7 @@
 
     <section class="card">
       <h2>Recently saved here</h2>
-      <p class="muted" style="margin-top:-6px">Links reach your phone the next time Kiroku checks (when you open it, and about every 15 minutes). You can still edit them afterwards; the changes follow.</p>
+      <p class="muted" style="margin-top:-6px">Links reach your phone the next time Kiroku checks (when you open it, and about every 15 minutes). You can still edit them afterwards; the changes follow. Changes made on your phone (and titles it finds) show up here after its next check.</p>
       <p id="recentEmpty" class="muted hidden">Nothing yet.</p>
       <ul id="recent" class="recent"></ul>
     </section>
@@ -362,6 +362,7 @@
 
   // ---- Form state: new link, or editing one already saved ----
   let editing = null; // id of the link being edited
+  let loaded = null;  // that link as it was when editing started (to send only what changed)
   let recentRows = [];
   const isPopup = window.name === 'kiroku' && window.opener;
 
@@ -392,6 +393,7 @@
     renderRecent();
   }
   function startEdit(r) {
+    loaded = r;
     fillForm(r);
     setMode(r.id, r.on_phone
       ? 'Editing a link that is already on your phone. Only what you change here is updated there.'
@@ -401,6 +403,7 @@
   }
   $('done').addEventListener('click', () => {
     if (isPopup) { window.close(); return; }
+    loaded = null;
     clearForm();
     setMode(null, null);
     $('status').textContent = '';
@@ -473,6 +476,22 @@
   // ---- Save ----
   if (prefill) { $('url').value = prefill.url; $('title').value = prefill.title; }
 
+  // Only the fields that differ from the loaded link, so changes made on the phone to
+  // other fields in the meantime are kept.
+  function changedFields(f, before) {
+    const norm = (v) => (v == null ? '' : String(v).trim());
+    const contactKey = (list) => JSON.stringify((list || []).map((c) =>
+      [c.id, norm(c.name), norm(c.email), norm(c.phone), norm(c.address)]));
+    const out = {};
+    if (norm(f.p_url) !== norm(before.url)) out.url = f.p_url;
+    if (norm(f.p_title) !== norm(before.title)) out.title = f.p_title;
+    if (norm(f.p_folder) !== norm(before.folder)) out.folder = f.p_folder;
+    if (JSON.stringify(f.p_tags || []) !== JSON.stringify(before.tags || [])) out.tags = f.p_tags;
+    if (norm(f.p_note) !== norm(before.note)) out.note = f.p_note;
+    if (contactKey(f.p_contacts) !== contactKey(before.contacts)) out.contacts = f.p_contacts;
+    return out;
+  }
+
   $('form').addEventListener('submit', async (e) => {
     e.preventDefault();
     if ($('tagInput').value.trim()) { addTags($('tagInput').value); $('tagInput').value = ''; }
@@ -491,8 +510,13 @@
     };
     try {
       if (editing) {
-        await rpc('kiroku_inbox_update', { p_id: editing, ...fields });
-        status.textContent = 'Changes saved. They will reach your phone on its next check.';
+        const changes = changedFields(fields, loaded || {});
+        if (Object.keys(changes).length) {
+          await rpc('kiroku_inbox_update', { p_id: editing, p_changes: changes });
+          status.textContent = 'Changes saved. They will reach your phone on its next check.';
+        } else {
+          status.textContent = 'Nothing changed.';
+        }
       } else {
         const id = await rpc('kiroku_inbox_add', fields);
         status.textContent = 'Saved. Missed something? Change it here and click Save changes.';
@@ -500,6 +524,7 @@
       }
       status.className = 'status ok';
       await refreshRecent();
+      loaded = recentRows.find((r) => r.id === editing) || loaded;
     } catch (err) {
       status.className = 'status err';
       status.textContent = `Couldn't save: ${err.message}`;

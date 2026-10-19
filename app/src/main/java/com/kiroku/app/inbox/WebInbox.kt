@@ -65,6 +65,26 @@ data class WebItem(
     companion object {
         val EMPTY = WebItem("", null, null, emptyList(), null, emptyList())
 
+        private fun String?.limit(max: Int): String? = this?.trim()?.take(max)?.trim()?.takeIf { it.isNotEmpty() }
+
+        /** The phone's link, tidied the same way the inbox script tidies what it stores. */
+        fun fromPhone(link: LinkEntity, folderName: String?, contacts: List<ContactEntity>) = WebItem(
+            url = link.url.trim().take(4000),
+            title = link.title.limit(500),
+            folder = folderName.limit(80),
+            tags = link.tags.mapNotNull { it.limit(60) }.take(20),
+            note = link.notes.limit(4000),
+            contacts = contacts.filterNot { it.isBlank() }.take(20).map {
+                WebContact(
+                    it.id.take(80),
+                    it.name.limit(200).orEmpty(),
+                    it.email.limit(200).orEmpty(),
+                    it.phone.limit(60).orEmpty(),
+                    it.address.limit(1000).orEmpty(),
+                )
+            },
+        )
+
         fun from(json: JSONObject): WebItem {
             fun JSONObject.text(key: String): String? =
                 if (isNull(key)) null else optString(key).trim().takeIf { it.isNotEmpty() }
@@ -194,6 +214,7 @@ class WebInbox(
                 }
             }
             if (done.length() > 0) rpc("kiroku_inbox_done", JSONObject().put("p_items", done))
+            sendBack()
 
             prefs.inboxLastCheck = System.currentTimeMillis()
             prefs.inboxLastAdded = added
@@ -206,6 +227,33 @@ class WebInbox(
             prefs.inboxLastError = e.message ?: e.javaClass.simpleName
             throw e
         }
+    }
+
+    /**
+     * Keeps the web page's list showing what the phone has: fetched titles, edits made on the
+     * phone. Links deleted on the phone disappear from the web list.
+     */
+    private suspend fun sendBack() {
+        val collected = JSONArray(rpc("kiroku_inbox_collected", JSONObject()))
+        if (collected.length() == 0) return
+        val folderNames = categories.getAll().associate { it.id to it.name }
+        val refresh = JSONArray()
+        val forget = JSONArray()
+        for (i in 0 until collected.length()) {
+            val row = collected.getJSONObject(i)
+            val id = row.getString("id")
+            val version = row.optInt("version", 1)
+            val link = row.str("link_id")?.let { links.getById(it) }
+            if (link == null) {
+                forget.put(JSONObject().put("id", id).put("version", version))
+                continue
+            }
+            val phone = WebItem.fromPhone(link, link.category?.let { folderNames[it] }, contacts.getFor(link.id))
+            val web = row.optJSONObject("delivered")?.let { WebItem.from(it) }
+            if (phone != web) refresh.put(phone.toJson().put("id", id).put("version", version))
+        }
+        if (refresh.length() > 0) rpc("kiroku_inbox_refresh", JSONObject().put("p_items", refresh))
+        if (forget.length() > 0) rpc("kiroku_inbox_forget", JSONObject().put("p_items", forget))
     }
 
     private suspend fun folderId(name: String?): String? = name?.let { categories.create(it, "folder").id }
@@ -231,7 +279,8 @@ class WebInbox(
 
     /** The link was already saved on the phone: add what's missing without overwriting anything. */
     private suspend fun mergeInto(link: LinkEntity, item: WebItem) {
-        if (link.title.isNullOrBlank() && item.title != null) links.updateTitle(link.id, item.title)
+        // A title typed on the web beats a fetched one, but not one typed on the phone.
+        if (item.title != null && (link.title.isNullOrBlank() || !link.titleCustom)) links.updateTitle(link.id, item.title)
         if (link.category == null && item.folder != null) links.setCategory(link.id, folderId(item.folder))
         val tags = (link.tags + item.tags).distinctBy { it.lowercase() }
         if (tags.size != link.tags.size) links.setTags(link.id, tags)
