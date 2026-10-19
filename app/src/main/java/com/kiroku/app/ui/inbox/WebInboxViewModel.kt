@@ -59,9 +59,12 @@ class WebInboxViewModel(
                 val result = inbox.checkNow()
                 configured = true
                 message = onSuccess() ?: when {
-                    result.added == 0 && result.alreadySaved == 0 -> "No new links waiting"
-                    result.added == 1 -> "1 link added from the web"
-                    else -> "${result.added} links added from the web"
+                    result.added == 0 && result.updated == 0 && result.alreadySaved == 0 -> "Nothing new from the web"
+                    else -> listOfNotNull(
+                        result.added.takeIf { it > 0 }?.let { if (it == 1) "1 link added" else "$it links added" },
+                        result.updated.takeIf { it > 0 }?.let { if (it == 1) "1 link updated" else "$it links updated" },
+                        result.alreadySaved.takeIf { it > 0 }?.let { "$it already saved" },
+                    ).joinToString(", ") + " from the web"
                 }
             } catch (e: CancellationException) {
                 throw e

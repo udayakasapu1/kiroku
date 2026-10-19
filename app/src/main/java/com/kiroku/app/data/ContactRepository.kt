@@ -6,6 +6,7 @@ import java.util.UUID
 class ContactRepository(private val dao: ContactDao) {
     fun observeFor(linkId: String): Flow<List<ContactEntity>> = dao.observeFor(linkId)
     suspend fun getAll(): List<ContactEntity> = dao.getAll()
+    suspend fun getFor(linkId: String): List<ContactEntity> = dao.getFor(linkId)
 
     /** Adds a new contact (empty id) or saves changes to an existing one. Blank contacts are ignored. */
     suspend fun save(linkId: String, contact: ContactEntity) {

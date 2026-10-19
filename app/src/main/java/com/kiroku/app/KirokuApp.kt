@@ -55,6 +55,6 @@ class AppContainer(context: Context) {
     val attachments = AttachmentRepository(appContext, database.attachmentDao())
     val contacts = ContactRepository(database.contactDao())
     val backup = BackupManager(appContext, links, notes, categories, contacts)
-    val inbox = WebInbox(prefs, httpClient, links, categories)
+    val inbox = WebInbox(prefs, httpClient, links, categories, contacts)
     val shares = ShareInbox()
 }

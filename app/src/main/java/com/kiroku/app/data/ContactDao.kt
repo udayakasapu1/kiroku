@@ -11,6 +11,9 @@ interface ContactDao {
     @Query("SELECT * FROM contacts WHERE link_id = :linkId ORDER BY created_at ASC")
     fun observeFor(linkId: String): Flow<List<ContactEntity>>
 
+    @Query("SELECT * FROM contacts WHERE link_id = :linkId ORDER BY created_at ASC")
+    suspend fun getFor(linkId: String): List<ContactEntity>
+
     @Query("SELECT * FROM contacts ORDER BY created_at ASC")
     suspend fun getAll(): List<ContactEntity>
 

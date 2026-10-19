@@ -82,6 +82,24 @@
     border: 1px dashed var(--primary); cursor: grab;
   }
   ol { padding-left: 20px; margin: 8px 0 0; }
+  .contact { border: 1px solid var(--border); border-radius: 12px; padding: 10px 12px 12px; margin-top: 10px; background: var(--surface); }
+  .contact-head { display: flex; justify-content: space-between; align-items: center; font-size: 13px; font-weight: 600; color: var(--muted); }
+  .contact-head button { min-height: 32px; padding: 4px 10px; font-size: 13px; background: transparent; color: var(--error); font-weight: 500; }
+  .contact .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 6px; }
+  .contact .grid .wide { grid-column: 1 / -1; }
+  @media (max-width: 480px) { .contact .grid { grid-template-columns: 1fr; } }
+  .small { min-height: 36px; padding: 6px 14px; font-size: 14px; }
+  .editing-banner { background: var(--primary-soft); color: var(--primary-deep); border-radius: 10px; padding: 8px 12px; font-size: 14px; margin-bottom: 4px; }
+  ul.recent { list-style: none; padding: 0; margin: 0; }
+  ul.recent li { padding: 10px 0; border-top: 1px solid var(--border); font-size: 14px; overflow-wrap: anywhere; display: flex; gap: 10px; align-items: flex-start; }
+  ul.recent li:first-child { border-top: 0; }
+  ul.recent .body { flex: 1; min-width: 0; }
+  ul.recent .actions { display: flex; gap: 6px; flex: none; }
+  ul.recent .actions button { min-height: 32px; padding: 4px 12px; font-size: 13px; }
+  .badge { display: inline-block; font-size: 12px; font-weight: 600; border-radius: 999px; padding: 1px 8px; margin-left: 6px; vertical-align: 1px; }
+  .badge.wait { background: var(--surface-2); color: var(--muted); }
+  .badge.phone { background: var(--primary-soft); color: var(--primary-deep); }
+  li.current { background: var(--primary-soft); border-radius: 10px; padding-left: 8px !important; padding-right: 8px !important; }
   .hidden { display: none !important; }
   footer { text-align: center; margin-top: 24px; }
   footer button { font-size: 14px; }
@@ -114,7 +132,8 @@
   <!-- Add form -->
   <section id="app" class="hidden">
     <form id="form" class="card" autocomplete="off">
-      <h2>Save a link</h2>
+      <h2 id="formTitle">Save a link</h2>
+      <div id="editingBanner" class="editing-banner hidden"></div>
       <label for="url">Link</label>
       <input id="url" type="url" inputmode="url" placeholder="https://…" required>
       <label for="title">Title <span class="muted">(optional, your phone fetches it too)</span></label>
@@ -131,16 +150,22 @@
       <label for="note">Note</label>
       <textarea id="note" maxlength="4000"></textarea>
 
-      <div class="row" style="margin-top:16px">
+      <label>Contacts</label>
+      <div id="contacts"></div>
+      <button id="addContact" type="button" class="ghost small" style="margin-top:8px">＋ Add contact</button>
+
+      <div class="row" style="margin-top:18px">
         <button id="save" type="submit">Save to Kiroku</button>
+        <button id="done" type="button" class="ghost hidden">Done</button>
       </div>
       <div id="status" class="status" role="status" aria-live="polite"></div>
     </form>
 
     <section class="card">
-      <h2>Waiting for your phone <span id="waitingCount" class="muted"></span></h2>
-      <p id="waitingEmpty" class="muted">Nothing waiting. Saved links move to your phone the next time Kiroku checks (every ~15 minutes, or when you open it).</p>
-      <ul id="waiting" class="waiting"></ul>
+      <h2>Recently saved here</h2>
+      <p class="muted" style="margin-top:-6px">Links reach your phone the next time Kiroku checks (when you open it, and about every 15 minutes). You can still edit them afterwards; the changes follow.</p>
+      <p id="recentEmpty" class="muted hidden">Nothing yet.</p>
+      <ul id="recent" class="recent"></ul>
     </section>
 
     <section class="card">
@@ -283,33 +308,170 @@
     if (e.target.value.includes(',')) { addTags(e.target.value); e.target.value = ''; }
   });
 
-  // ---- Waiting list ----
-  async function refreshWaiting() {
+  // ---- Contacts ----
+  const contactsBox = $('contacts');
+  function newId() {
+    return 'w-' + (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2));
+  }
+  function contactField(labelText, key, value, type, wide) {
+    const wrap = document.createElement('div');
+    if (wide) wrap.className = 'wide';
+    const input = document.createElement(key === 'address' ? 'textarea' : 'input');
+    if (key !== 'address') input.type = type;
+    else input.style.minHeight = '56px';
+    input.dataset.key = key;
+    input.placeholder = labelText;
+    input.setAttribute('aria-label', labelText);
+    input.maxLength = key === 'address' ? 1000 : 200;
+    input.value = value || '';
+    wrap.appendChild(input);
+    return wrap;
+  }
+  function addContactRow(c, focus) {
+    c = c || {};
+    const box = document.createElement('div');
+    box.className = 'contact';
+    box.dataset.id = c.id || newId();
+    const head = document.createElement('div');
+    head.className = 'contact-head';
+    head.textContent = 'Contact';
+    const rm = document.createElement('button');
+    rm.type = 'button';
+    rm.textContent = 'Remove';
+    rm.addEventListener('click', () => box.remove());
+    head.appendChild(rm);
+    const grid = document.createElement('div');
+    grid.className = 'grid';
+    grid.appendChild(contactField('Contact name', 'name', c.name, 'text', false));
+    grid.appendChild(contactField('Email address', 'email', c.email, 'email', false));
+    grid.appendChild(contactField('Phone number', 'phone', c.phone, 'tel', false));
+    grid.appendChild(contactField('Facility address', 'address', c.address, 'text', true));
+    box.appendChild(head);
+    box.appendChild(grid);
+    contactsBox.appendChild(box);
+    if (focus) grid.querySelector('input').focus();
+  }
+  function readContacts() {
+    return [...contactsBox.querySelectorAll('.contact')].map((box) => {
+      const c = { id: box.dataset.id };
+      box.querySelectorAll('[data-key]').forEach((el) => { c[el.dataset.key] = el.value.trim(); });
+      return c;
+    }).filter((c) => c.name || c.email || c.phone || c.address);
+  }
+  $('addContact').addEventListener('click', () => addContactRow(null, true));
+
+  // ---- Form state: new link, or editing one already saved ----
+  let editing = null; // id of the link being edited
+  let recentRows = [];
+  const isPopup = window.name === 'kiroku' && window.opener;
+
+  function fillForm(r) {
+    $('url').value = r.url || '';
+    $('title').value = r.title || '';
+    const known = folderNames.some((n) => n === r.folder);
+    selectedFolder = known ? r.folder : '';
+    $('folder').value = known ? '' : (r.folder || '');
+    renderFolders(folderNames);
+    tags = (r.tags || []).slice(); renderTags();
+    $('note').value = r.note || '';
+    contactsBox.textContent = '';
+    (r.contacts || []).forEach((c) => addContactRow(c, false));
+  }
+  function clearForm() {
+    fillForm({});
+    $('tagInput').value = '';
+  }
+  function setMode(id, banner) {
+    editing = id;
+    $('formTitle').textContent = id ? 'Edit link' : 'Save a link';
+    $('save').textContent = id ? 'Save changes' : 'Save to Kiroku';
+    $('done').classList.toggle('hidden', !id);
+    $('done').textContent = isPopup ? 'Done, close' : 'Done';
+    $('editingBanner').classList.toggle('hidden', !banner);
+    $('editingBanner').textContent = banner || '';
+    renderRecent();
+  }
+  function startEdit(r) {
+    fillForm(r);
+    setMode(r.id, r.on_phone
+      ? 'Editing a link that is already on your phone. Only what you change here is updated there.'
+      : 'Editing a link that is still waiting for your phone.');
+    $('status').textContent = '';
+    $('form').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+  $('done').addEventListener('click', () => {
+    if (isPopup) { window.close(); return; }
+    clearForm();
+    setMode(null, null);
+    $('status').textContent = '';
+    $('url').focus();
+  });
+
+  // ---- Recently saved ----
+  function renderRecent() {
+    const list = $('recent');
+    list.textContent = '';
+    recentRows.forEach((r) => {
+      const li = document.createElement('li');
+      if (r.id === editing) li.className = 'current';
+      const body = document.createElement('div');
+      body.className = 'body';
+      const strong = document.createElement('strong');
+      strong.textContent = r.title || r.url;
+      body.appendChild(strong);
+      const badge = document.createElement('span');
+      badge.className = 'badge ' + (r.pending ? 'wait' : 'phone');
+      badge.textContent = r.pending ? (r.on_phone ? 'Edit waiting for phone' : 'Waiting for phone') : 'On your phone';
+      body.appendChild(badge);
+      if (r.title) { const u = document.createElement('div'); u.textContent = r.url; body.appendChild(u); }
+      const n = (r.contacts || []).length;
+      const meta = [r.folder, ...(r.tags || []).map((t) => '#' + t), n ? `${n} contact${n > 1 ? 's' : ''}` : '']
+        .filter(Boolean).join(' · ');
+      if (meta) { const m = document.createElement('div'); m.className = 'muted'; m.textContent = meta; body.appendChild(m); }
+      li.appendChild(body);
+
+      const actions = document.createElement('div');
+      actions.className = 'actions';
+      const edit = document.createElement('button');
+      edit.type = 'button';
+      edit.className = 'ghost';
+      edit.textContent = 'Edit';
+      edit.addEventListener('click', () => startEdit(r));
+      actions.appendChild(edit);
+      if (!r.on_phone) {
+        const del = document.createElement('button');
+        del.type = 'button';
+        del.className = 'ghost';
+        del.textContent = 'Remove';
+        del.addEventListener('click', async () => {
+          if (!confirm('Remove this link from the web inbox? It has not reached your phone yet.')) return;
+          try {
+            await rpc('kiroku_inbox_remove', { p_id: r.id });
+            if (editing === r.id) { clearForm(); setMode(null, null); }
+            refreshRecent();
+          } catch (err) { alert(err.message); refreshRecent(); }
+        });
+        actions.appendChild(del);
+      }
+      li.appendChild(actions);
+      list.appendChild(li);
+    });
+    $('recentEmpty').classList.toggle('hidden', recentRows.length > 0);
+  }
+  async function refreshRecent() {
     try {
-      const rows = await rpc('kiroku_inbox_list', {});
-      const list = $('waiting');
-      list.textContent = '';
-      rows.slice().reverse().forEach((r) => {
-        const li = document.createElement('li');
-        const strong = document.createElement('strong');
-        strong.textContent = r.title || r.url;
-        li.appendChild(strong);
-        if (r.title) { li.appendChild(document.createElement('br')); li.appendChild(document.createTextNode(r.url)); }
-        const meta = [r.folder, ...(r.tags || []).map((t) => '#' + t)].filter(Boolean).join(' · ');
-        if (meta) { const m = document.createElement('div'); m.className = 'muted'; m.textContent = meta; li.appendChild(m); }
-        list.appendChild(li);
-      });
-      $('waitingCount').textContent = rows.length ? `· ${rows.length}` : '';
-      $('waitingEmpty').classList.toggle('hidden', rows.length > 0);
+      recentRows = await rpc('kiroku_inbox_recent', {}) || [];
+      renderRecent();
     } catch (e) {
-      $('waitingEmpty').textContent = e.message;
+      $('recentEmpty').textContent = e.message;
+      $('recentEmpty').classList.remove('hidden');
     }
   }
-  refreshWaiting();
+  refreshRecent();
+  setInterval(() => { if (!document.hidden) refreshRecent(); }, 60000);
 
   // ---- Save ----
   if (prefill) { $('url').value = prefill.url; $('title').value = prefill.title; }
-  const isPopup = window.name === 'kiroku' && window.opener;
 
   $('form').addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -319,20 +481,25 @@
     btn.disabled = true;
     status.className = 'status';
     status.textContent = 'Saving…';
+    const fields = {
+      p_url: $('url').value.trim(),
+      p_title: $('title').value.trim() || null,
+      p_folder: $('folder').value.trim() || selectedFolder || null,
+      p_tags: tags,
+      p_note: $('note').value.trim() || null,
+      p_contacts: readContacts(),
+    };
     try {
-      await rpc('kiroku_inbox_add', {
-        p_url: $('url').value.trim(),
-        p_title: $('title').value.trim() || null,
-        p_folder: $('folder').value.trim() || selectedFolder || null,
-        p_tags: tags,
-        p_note: $('note').value.trim() || null,
-      });
+      if (editing) {
+        await rpc('kiroku_inbox_update', { p_id: editing, ...fields });
+        status.textContent = 'Changes saved. They will reach your phone on its next check.';
+      } else {
+        const id = await rpc('kiroku_inbox_add', fields);
+        status.textContent = 'Saved. Missed something? Change it here and click Save changes.';
+        setMode(id, null);
+      }
       status.className = 'status ok';
-      status.textContent = 'Saved. It will appear in Kiroku on your phone shortly.';
-      ['url', 'title', 'note', 'folder'].forEach((id) => { $(id).value = ''; });
-      tags = []; renderTags();
-      refreshWaiting();
-      if (isPopup) setTimeout(() => window.close(), 1200);
+      await refreshRecent();
     } catch (err) {
       status.className = 'status err';
       status.textContent = `Couldn't save: ${err.message}`;

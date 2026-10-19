@@ -71,6 +71,12 @@ One-time setup:
 3. **Phone:** ⋮ → Web inbox → paste the Project URL and anon public key (Supabase → Project Settings → API) → Connect.
 4. **Laptop:** tap **Share link** in the app, send it to the laptop, open it once. Drag the "Save to Kiroku" button to the bookmarks bar.
 
+Links saved on the web page stay listed there for 60 days under "Recently saved here", with contacts, and
+can still be edited. Edits reach the phone on its next check and change only the fields you edited on the web.
+After you click Save, the form stays open on that link, so anything you missed can be added right away.
+
+If you set up the inbox with Kiroku 0.6.0, run the setup script once more (it upgrades the inbox, nothing is lost).
+
 The setup link holds your inbox key, so keep it private. "Disconnect all browsers" in the app makes a new key.
 
 ## How it works

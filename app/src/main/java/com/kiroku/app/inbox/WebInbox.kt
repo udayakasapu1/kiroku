@@ -14,6 +14,9 @@ import androidx.work.WorkerParameters
 import com.kiroku.app.AppPrefs
 import com.kiroku.app.KirokuApp
 import com.kiroku.app.data.CategoryRepository
+import com.kiroku.app.data.ContactEntity
+import com.kiroku.app.data.ContactRepository
+import com.kiroku.app.data.LinkEntity
 import com.kiroku.app.data.LinkRepository
 import com.kiroku.app.data.SaveResult
 import kotlinx.coroutines.CancellationException
@@ -32,17 +35,68 @@ import java.io.IOException
 import java.security.SecureRandom
 import java.util.concurrent.TimeUnit
 
-data class InboxResult(val added: Int, val alreadySaved: Int, val skipped: Int)
+data class InboxResult(val added: Int, val updated: Int, val alreadySaved: Int, val skipped: Int)
+
+/** A contact typed on the web page; its id ("w-…") is kept on the phone so later edits find it. */
+data class WebContact(val id: String, val name: String, val email: String, val phone: String, val address: String) {
+    fun toEntity(linkId: String, createdAt: Long) =
+        ContactEntity(id = id, linkId = linkId, name = name, email = email, phone = phone, address = address, createdAt = createdAt)
+
+    fun toJson(): JSONObject = JSONObject().put("id", id).put("name", name).put("email", email).put("phone", phone).put("address", address)
+}
+
+/** One link as the web page has it. */
+data class WebItem(
+    val url: String,
+    val title: String?,
+    val folder: String?,
+    val tags: List<String>,
+    val note: String?,
+    val contacts: List<WebContact>,
+) {
+    fun toJson(): JSONObject = JSONObject()
+        .put("url", url)
+        .put("title", title ?: JSONObject.NULL)
+        .put("folder", folder ?: JSONObject.NULL)
+        .put("tags", JSONArray(tags))
+        .put("note", note ?: JSONObject.NULL)
+        .put("contacts", JSONArray(contacts.map { it.toJson() }))
+
+    companion object {
+        val EMPTY = WebItem("", null, null, emptyList(), null, emptyList())
+
+        fun from(json: JSONObject): WebItem {
+            fun JSONObject.text(key: String): String? =
+                if (isNull(key)) null else optString(key).trim().takeIf { it.isNotEmpty() }
+            val tagArray = json.optJSONArray("tags")
+            val contactArray = json.optJSONArray("contacts")
+            return WebItem(
+                url = json.optString("url").trim(),
+                title = json.text("title"),
+                folder = json.text("folder"),
+                tags = if (tagArray == null) emptyList() else List(tagArray.length()) { tagArray.optString(it).trim() }.filter { it.isNotEmpty() },
+                note = json.text("note"),
+                contacts = if (contactArray == null) emptyList() else (0 until contactArray.length()).mapNotNull { i ->
+                    val c = contactArray.optJSONObject(i) ?: return@mapNotNull null
+                    val id = c.text("id") ?: return@mapNotNull null
+                    WebContact(id, c.text("name").orEmpty(), c.text("email").orEmpty(), c.text("phone").orEmpty(), c.text("address").orEmpty())
+                },
+            )
+        }
+    }
+}
 
 /**
  * Web inbox: links saved from a browser (web/index.html) wait in Supabase until this
- * picks them up, saves them like any other link, and removes them from the inbox.
+ * picks them up and saves them like any other link. Links stay listed on the web page for a
+ * while and can still be edited there; those edits are copied to the phone too.
  */
 class WebInbox(
     private val prefs: AppPrefs,
     private val http: OkHttpClient,
     private val links: LinkRepository,
     private val categories: CategoryRepository,
+    private val contacts: ContactRepository,
 ) {
     private val lock = Mutex()
 
@@ -81,7 +135,11 @@ class WebInbox(
         return "$WEB_PAGE#setup=$encoded"
     }
 
-    /** Collects waiting links. Safe to call often; runs one at a time. */
+    /**
+     * Collects new links and edits made on the web page. Safe to call often; runs one at a time.
+     * Each row comes with what the phone got last time ("delivered"), so an edit on the web
+     * only changes the fields that were edited there, not changes made on the phone since.
+     */
     suspend fun checkNow(): InboxResult = lock.withLock {
         check(isConfigured) { "Web inbox is not set up" }
         try {
@@ -89,34 +147,58 @@ class WebInbox(
             rpc("kiroku_inbox_set_folders", JSONObject().put("p_folders", JSONArray(categories.getAll().map { it.name })))
 
             val waiting = JSONArray(rpc("kiroku_inbox_list", JSONObject()))
-            val done = mutableListOf<String>()
+            val done = JSONArray()
             var added = 0
+            var updated = 0
             var already = 0
             var skipped = 0
             for (i in 0 until waiting.length()) {
-                val item = waiting.getJSONObject(i)
+                val row = waiting.getJSONObject(i)
                 try {
-                    val folderId = item.str("folder")?.let { categories.create(it, "folder").id }
-                    val tagArray = item.optJSONArray("tags")
-                    val tags = if (tagArray == null) emptyList() else List(tagArray.length()) { tagArray.optString(it) }
-                    when (links.save(item.getString("url"), item.str("note").orEmpty(), item.str("title"), folderId, tags)) {
-                        is SaveResult.Saved -> added++
-                        is SaveResult.AlreadySaved -> already++
-                        SaveResult.InvalidUrl -> skipped++
+                    val item = WebItem.from(row)
+                    val previous = row.optJSONObject("delivered")?.let { WebItem.from(it) }
+                    val existing = row.str("link_id")?.let { links.getById(it) }
+                    val linkId: String? = if (existing != null) {
+                        applyEdits(existing.id, item, previous ?: WebItem.EMPTY)
+                        updated++
+                        existing.id
+                    } else {
+                        when (val result = links.save(item.url, item.note.orEmpty(), item.title, folderId(item.folder), item.tags)) {
+                            is SaveResult.Saved -> {
+                                saveContacts(result.item.id, item.contacts)
+                                added++
+                                result.item.id
+                            }
+                            is SaveResult.AlreadySaved -> {
+                                mergeInto(result.item, item)
+                                already++
+                                result.item.id
+                            }
+                            SaveResult.InvalidUrl -> {
+                                skipped++
+                                null
+                            }
+                        }
                     }
-                    done += item.getString("id")
+                    done.put(
+                        JSONObject()
+                            .put("id", row.getString("id"))
+                            .put("version", row.optInt("version", 1))
+                            .put("link_id", linkId ?: JSONObject.NULL)
+                            .put("snapshot", item.toJson())
+                    )
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
                     // Leave it in the inbox and try again next time.
                 }
             }
-            if (done.isNotEmpty()) rpc("kiroku_inbox_ack", JSONObject().put("p_ids", JSONArray(done)))
+            if (done.length() > 0) rpc("kiroku_inbox_done", JSONObject().put("p_items", done))
 
             prefs.inboxLastCheck = System.currentTimeMillis()
             prefs.inboxLastAdded = added
             prefs.inboxLastError = ""
-            InboxResult(added, already, skipped)
+            InboxResult(added, updated, already, skipped)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -124,6 +206,46 @@ class WebInbox(
             prefs.inboxLastError = e.message ?: e.javaClass.simpleName
             throw e
         }
+    }
+
+    private suspend fun folderId(name: String?): String? = name?.let { categories.create(it, "folder").id }
+
+    /** A link already on the phone was edited on the web: copy over what changed there. */
+    private suspend fun applyEdits(linkId: String, now: WebItem, before: WebItem) {
+        if (now.url != before.url) links.updateUrl(linkId, now.url)
+        if (now.title != before.title) links.updateTitle(linkId, now.title.orEmpty())
+        if (now.folder != before.folder) links.setCategory(linkId, folderId(now.folder))
+        if (now.tags != before.tags) links.setTags(linkId, now.tags)
+        if (now.note != before.note) links.updateNotes(linkId, now.note.orEmpty())
+
+        val old = before.contacts.associateBy { it.id }
+        val onPhone = contacts.getFor(linkId).associateBy { it.id }
+        now.contacts.forEachIndexed { index, c ->
+            if (old[c.id] != c || c.id !in onPhone) {
+                contacts.save(linkId, c.toEntity(linkId, onPhone[c.id]?.createdAt ?: (System.currentTimeMillis() + index)))
+            }
+        }
+        val kept = now.contacts.map { it.id }.toSet()
+        old.keys.filter { it !in kept && it in onPhone }.forEach { contacts.delete(it) }
+    }
+
+    /** The link was already saved on the phone: add what's missing without overwriting anything. */
+    private suspend fun mergeInto(link: LinkEntity, item: WebItem) {
+        if (link.title.isNullOrBlank() && item.title != null) links.updateTitle(link.id, item.title)
+        if (link.category == null && item.folder != null) links.setCategory(link.id, folderId(item.folder))
+        val tags = (link.tags + item.tags).distinctBy { it.lowercase() }
+        if (tags.size != link.tags.size) links.setTags(link.id, tags)
+        val note = item.note
+        if (note != null && !link.notes.contains(note)) {
+            links.updateNotes(link.id, if (link.notes.isBlank()) note else link.notes.trimEnd() + "\n\n" + note)
+        }
+        val have = contacts.getFor(link.id).map { it.id }.toSet()
+        saveContacts(link.id, item.contacts.filter { it.id !in have })
+    }
+
+    private suspend fun saveContacts(linkId: String, list: List<WebContact>) {
+        val start = System.currentTimeMillis()
+        list.forEachIndexed { index, c -> contacts.save(linkId, c.toEntity(linkId, start + index)) }
     }
 
     private suspend fun rpc(function: String, body: JSONObject): String = withContext(Dispatchers.IO) {
