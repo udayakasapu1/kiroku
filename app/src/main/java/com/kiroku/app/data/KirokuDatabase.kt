@@ -10,7 +10,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
     entities = [LinkEntity::class, NoteEntity::class, CategoryEntity::class, AttachmentEntity::class, ContactEntity::class],
-    version = 4,
+    version = 5,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
@@ -24,7 +24,7 @@ abstract class KirokuDatabase : RoomDatabase() {
     companion object {
         fun create(context: Context): KirokuDatabase =
             Room.databaseBuilder(context, KirokuDatabase::class.java, "kiroku.db")
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
                 .build()
 
         /**
@@ -47,6 +47,13 @@ abstract class KirokuDatabase : RoomDatabase() {
                     )
                 }
                 db.execSQL("UPDATE notes SET category = NULL")
+            }
+        }
+
+        /** v4 -> v5: remember which titles were typed by hand (fetching no longer replaces them). */
+        val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `knowledge_items` ADD COLUMN `title_custom` INTEGER NOT NULL DEFAULT 0")
             }
         }
 

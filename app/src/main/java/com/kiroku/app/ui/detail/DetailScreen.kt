@@ -307,12 +307,22 @@ private fun DetailContent(
                 vm.setTitle(it)
             },
             placeholder = { Text("Add a title", style = MaterialTheme.typography.headlineSmall) },
+            trailingIcon = { Icon(Icons.Outlined.Edit, contentDescription = "Edit title", tint = colors.onSurfaceVariant) },
+            supportingText = when {
+                title.isNotBlank() -> null
+                item.fetchState == FetchState.PENDING -> {
+                    { Text("Looking for the page's title… or type your own.") }
+                }
+                else -> {
+                    { Text("The page didn't give a title. Tap here to type one.") }
+                }
+            },
             textStyle = MaterialTheme.typography.headlineSmall.copy(color = colors.onBackground),
             colors = TextFieldDefaults.colors(
                 focusedContainerColor = Color.Transparent,
                 unfocusedContainerColor = Color.Transparent,
                 focusedIndicatorColor = colors.primary,
-                unfocusedIndicatorColor = Color.Transparent,
+                unfocusedIndicatorColor = colors.outlineVariant,
             ),
             modifier = Modifier.fillMaxWidth(),
         )

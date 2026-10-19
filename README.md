@@ -50,6 +50,7 @@ then uninstall Gurthu.
 | Move a link to another folder | Open the link and pick a different folder chip |
 | Archive | Open the item → ⋮ → **Archive** (Undo appears briefly). Archived items are behind the archive icon in each space |
 | Retry details | Pull down inside a folder, or ⋮ → Retry fetching details |
+| Titles | Type one in the save-a-link sheet, or tap the title on a link's page. A title you type is kept; fetching the page never replaces it. Clear it to get the page's own title back |
 | Tags | Type them right in the save-a-link sheet (Enter or comma adds one), or later on the link's page |
 | Contacts | **Add contact** on a link's page or while saving it: name, email, phone, facility address. Tap the icons to email, call or open the address in Maps. Search finds links by contact too |
 | Attach files | **Attach file** on a link's page, in a note, or while saving a link. Opens your Files app; files are copied into Kiroku. Tap a file to open it |

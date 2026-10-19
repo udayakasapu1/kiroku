@@ -178,6 +178,7 @@ class BackupManager(
             id = validId(obj.str("id")),
             url = url,
             title = title,
+            titleCustom = title != null && obj.optBoolean("title_custom", false),
             description = obj.str("description"),
             category = null, // resolved by import()
             subcategory = obj.str("subcategory"),
@@ -214,6 +215,7 @@ class BackupManager(
         .put("id", id)
         .put("url", url)
         .put("title", title ?: JSONObject.NULL)
+        .put("title_custom", titleCustom)
         .put("description", description ?: JSONObject.NULL)
         .put("category", category ?: JSONObject.NULL)
         .put("subcategory", subcategory ?: JSONObject.NULL)

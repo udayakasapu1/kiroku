@@ -68,6 +68,7 @@ class LinkRepository(
             id = UUID.randomUUID().toString(),
             url = url,
             title = titleHint?.trim()?.takeIf { it.isNotEmpty() },
+            titleCustom = !titleHint.isNullOrBlank(),
             category = category,
             sourceDomain = UrlUtils.domainOf(url),
             notes = note.trim(),
@@ -104,7 +105,8 @@ class LinkRepository(
         val current = dao.getById(id) ?: return // deleted while fetching
         dao.update(
             current.copy(
-                title = meta.title ?: current.title,
+                // A title typed by the user wins over the page's own.
+                title = if (current.titleCustom && !current.title.isNullOrBlank()) current.title else meta.title ?: current.title,
                 description = meta.description ?: current.description,
                 previewImageUrl = meta.imageUrl ?: current.previewImageUrl,
                 siteName = meta.siteName ?: current.siteName,
@@ -151,8 +153,11 @@ class LinkRepository(
         return ids.size
     }
 
-    suspend fun updateTitle(id: String, title: String) =
-        dao.setTitle(id, title.trim().takeIf { it.isNotEmpty() }, now())
+    /** Sets a title typed by the user. Clearing it lets the next fetch fill in the page's title. */
+    suspend fun updateTitle(id: String, title: String) {
+        val clean = title.trim().takeIf { it.isNotEmpty() }
+        dao.setTitle(id, clean, clean != null, now())
+    }
 
     suspend fun updateNotes(id: String, notes: String) = dao.setNotes(id, notes, now())
     suspend fun setCategory(id: String, category: String?) = dao.setCategory(id, category, now())

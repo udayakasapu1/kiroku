@@ -24,6 +24,8 @@ data class LinkEntity(
     @PrimaryKey val id: String,
     val url: String,
     val title: String? = null,
+    /** True when the title was typed by the user; fetching page details then leaves it alone. */
+    @ColumnInfo(name = "title_custom", defaultValue = "0") val titleCustom: Boolean = false,
     val description: String? = null,
     val category: String? = null,
     val subcategory: String? = null,

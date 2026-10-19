@@ -97,9 +97,11 @@ class MetadataFetcher(private val client: OkHttpClient) {
             return null
         }
 
-        val title = meta("og:title", "twitter:title")
-            ?: doc.title().trim().takeIf { it.isNotEmpty() }
-            ?: doc.selectFirst("h1")?.text()?.trim()?.takeIf { it.isNotEmpty() }
+        val title = (
+            meta("og:title", "twitter:title")
+                ?: doc.title().trim().takeIf { it.isNotEmpty() }
+                ?: doc.selectFirst("h1")?.text()?.trim()?.takeIf { it.isNotEmpty() }
+            )?.takeUnless { isPlaceholderTitle(it) }
 
         val description = meta("og:description", "twitter:description", "description")
 
@@ -119,6 +121,20 @@ class MetadataFetcher(private val client: OkHttpClient) {
             sourceDomain = domain,
         )
     }
+
+    /** Titles of "please wait / enable JavaScript / blocked" pages, not of the page itself. */
+    private fun isPlaceholderTitle(title: String): Boolean {
+        val t = title.lowercase().trim()
+        return t.length < 2 || placeholderTitles.any { t == it || t.startsWith(it) } ||
+            t.contains("enable javascript") || t.contains("javascript is required") ||
+            t.contains("javascript required") || t.contains("browser is not supported")
+    }
+
+    private val placeholderTitles = listOf(
+        "just a moment", "attention required", "access denied", "loading", "please wait", "redirecting",
+        "403 forbidden", "forbidden", "404 not found", "not found", "error", "untitled", "document",
+        "security check", "are you a robot", "captcha", "verifying", "one moment", "checking your browser",
+    )
 
     private fun String.clean(maxLength: Int): String? =
         replace(Regex("\\s+"), " ").trim().take(maxLength).takeIf { it.isNotEmpty() }

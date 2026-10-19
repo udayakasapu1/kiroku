@@ -169,6 +169,10 @@ class AddLinkViewModel(
         sheet = sheet.copy(url = value, error = null, duplicateId = null, noLinkFound = false)
     }
 
+    fun onTitleChange(value: String) {
+        sheet = sheet.copy(titleHint = value.takeIf { it.isNotBlank() })
+    }
+
     fun onNoteChange(value: String) {
         sheet = sheet.copy(note = value)
     }
@@ -186,7 +190,7 @@ class AddLinkViewModel(
                 links.save(
                     current.url,
                     current.note,
-                    current.titleHint,
+                    current.titleHint?.trim(),
                     current.category,
                     addTags(current.tags, listOf(current.tagInput)),
                 )

@@ -73,8 +73,8 @@ interface LinkDao {
     @Update
     suspend fun update(item: LinkEntity)
 
-    @Query("UPDATE knowledge_items SET title = :title, updated_at = :now WHERE id = :id")
-    suspend fun setTitle(id: String, title: String?, now: Long)
+    @Query("UPDATE knowledge_items SET title = :title, title_custom = :custom, updated_at = :now WHERE id = :id")
+    suspend fun setTitle(id: String, title: String?, custom: Boolean, now: Long)
 
     @Query("UPDATE knowledge_items SET notes = :notes, updated_at = :now WHERE id = :id")
     suspend fun setNotes(id: String, notes: String, now: Long)

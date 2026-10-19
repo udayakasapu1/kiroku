@@ -56,7 +56,6 @@ import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.kiroku.app.ui.components.CategoryPicker
 import com.kiroku.app.ui.components.FolderDialog
@@ -123,15 +122,17 @@ fun AddLinkSheet(vm: AddLinkViewModel) {
                     .focusRequester(urlFocus),
             )
 
-            state.titleHint?.let { hint ->
-                Text(
-                    hint,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = colors.onSurfaceVariant,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
+            OutlinedTextField(
+                value = state.titleHint.orEmpty(),
+                onValueChange = vm::onTitleChange,
+                label = { Text("Title (optional)") },
+                supportingText = { Text("Leave empty to use the page's own title.") },
+                enabled = !state.saving,
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences, imeAction = ImeAction.Next),
+                shape = MaterialTheme.shapes.medium,
+                modifier = Modifier.fillMaxWidth(),
+            )
 
             Text("Folder", style = MaterialTheme.typography.titleSmall, color = colors.onSurface)
             CategoryPicker(
