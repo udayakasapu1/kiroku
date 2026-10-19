@@ -16,6 +16,8 @@ import com.kiroku.app.data.CategoryEntity
 import com.kiroku.app.data.OwnerType
 import com.kiroku.app.data.PendingFile
 import com.kiroku.app.data.CategoryRepository
+import com.kiroku.app.data.ContactEntity
+import com.kiroku.app.data.ContactRepository
 import com.kiroku.app.data.FolderKeys
 import com.kiroku.app.data.LinkRepository
 import com.kiroku.app.data.NoteRepository
@@ -39,6 +41,8 @@ data class AddSheetState(
     /** Text typed in the tag field but not yet turned into a tag. */
     val tagInput: String = "",
     val files: List<PendingFile> = emptyList(),
+    /** Contacts to add once the link is saved. */
+    val contacts: List<ContactEntity> = emptyList(),
     val category: String? = null,
     val titleHint: String? = null,
     val fromShare: Boolean = false,
@@ -63,6 +67,7 @@ class AddLinkViewModel(
     private val notes: NoteRepository,
     private val categories: CategoryRepository,
     private val files: AttachmentRepository,
+    private val people: ContactRepository,
     private val shares: ShareInbox,
 ) : ViewModel() {
 
@@ -93,6 +98,21 @@ class AddLinkViewModel(
             if (result.none { it.equals(tag, ignoreCase = true) }) result += tag
         }
         return result
+    }
+
+    // ---- Contacts ----
+
+    fun savePendingContact(contact: ContactEntity) {
+        val list = sheet.contacts
+        sheet = if (contact.id.isEmpty()) {
+            sheet.copy(contacts = list + contact.copy(id = java.util.UUID.randomUUID().toString()))
+        } else {
+            sheet.copy(contacts = list.map { if (it.id == contact.id) contact else it })
+        }
+    }
+
+    fun deletePendingContact(contact: ContactEntity) {
+        sheet = sheet.copy(contacts = sheet.contacts.filterNot { it.id == contact.id })
     }
 
     // ---- Files ----
@@ -178,6 +198,7 @@ class AddLinkViewModel(
             }
             when (result) {
                 is SaveResult.Saved -> {
+                    current.contacts.forEach { people.save(result.item.id, it) }
                     val failed = attachPending(OwnerType.LINK, result.item.id, current.files)
                     sheet = AddSheetState()
                     if (failed > 0) eventChannel.send(AddEvent.Message("Saved, but $failed file(s) couldn't be attached"))
@@ -264,7 +285,7 @@ class AddLinkViewModel(
 
     companion object {
         fun factory(container: AppContainer) = viewModelFactory {
-            initializer { AddLinkViewModel(container.links, container.notes, container.categories, container.attachments, container.shares) }
+            initializer { AddLinkViewModel(container.links, container.notes, container.categories, container.attachments, container.contacts, container.shares) }
         }
     }
 }

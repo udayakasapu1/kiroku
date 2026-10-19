@@ -5,6 +5,7 @@ import android.content.Context
 import com.kiroku.app.backup.BackupManager
 import com.kiroku.app.data.AttachmentRepository
 import com.kiroku.app.data.CategoryRepository
+import com.kiroku.app.data.ContactRepository
 import com.kiroku.app.data.KirokuDatabase
 import com.kiroku.app.data.LinkRepository
 import com.kiroku.app.data.NoteRepository
@@ -48,8 +49,9 @@ class AppContainer(context: Context) {
     val links = LinkRepository(appContext, database.linkDao(), MetadataFetcher(httpClient))
     val notes = NoteRepository(database.noteDao())
     val categories = CategoryRepository(database, database.categoryDao(), database.linkDao())
-    val backup = BackupManager(appContext, links, notes, categories)
     val prefs = AppPrefs(appContext)
     val attachments = AttachmentRepository(appContext, database.attachmentDao())
+    val contacts = ContactRepository(database.contactDao())
+    val backup = BackupManager(appContext, links, notes, categories, contacts)
     val shares = ShareInbox()
 }

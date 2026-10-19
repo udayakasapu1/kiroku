@@ -88,6 +88,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import com.kiroku.app.ui.components.AttachmentsSection
 import com.kiroku.app.ui.components.CategoryPicker
+import com.kiroku.app.ui.components.ContactsSection
 import com.kiroku.app.ui.components.FolderDialog
 import com.kiroku.app.ui.components.FolderIcons
 import com.kiroku.app.ui.components.FolderLabel
@@ -380,6 +381,13 @@ private fun DetailContent(
             }),
             shape = MaterialTheme.shapes.medium,
             modifier = Modifier.fillMaxWidth(),
+        )
+
+        val contacts by vm.contacts.collectAsStateWithLifecycle()
+        ContactsSection(
+            contacts = contacts,
+            onSave = vm::saveContact,
+            onDelete = vm::deleteContact,
         )
 
         val attachments by vm.attachments.collectAsStateWithLifecycle()

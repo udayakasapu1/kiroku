@@ -4,6 +4,8 @@ import android.content.Context
 import android.net.Uri
 import com.kiroku.app.data.CategoryEntity
 import com.kiroku.app.data.CategoryRepository
+import com.kiroku.app.data.ContactEntity
+import com.kiroku.app.data.ContactRepository
 import com.kiroku.app.data.FolderSuggestions
 import com.kiroku.app.data.FetchState
 import com.kiroku.app.data.LinkEntity
@@ -33,6 +35,7 @@ class BackupManager(
     private val links: LinkRepository,
     private val notes: NoteRepository,
     private val categories: CategoryRepository,
+    private val contacts: ContactRepository,
 ) {
 
     suspend fun export(uri: Uri): Int = withContext(Dispatchers.IO) {
@@ -46,6 +49,7 @@ class BackupManager(
             .put("exported_at", Instant.now().toString())
             .put("items", JSONArray().also { array -> linkItems.forEach { array.put(it.toJson()) } })
             .put("notes", JSONArray().also { array -> noteItems.forEach { array.put(it.toJson()) } })
+            .put("contacts", JSONArray().also { array -> contacts.getAll().forEach { array.put(it.toJson()) } })
         val stream = context.contentResolver.openOutputStream(uri, "wt")
             ?: throw IOException("Couldn't open the file for writing")
         stream.use { it.write(root.toString(2).toByteArray()) }
@@ -59,6 +63,7 @@ class BackupManager(
         val linkArray: JSONArray?
         val noteArray: JSONArray?
         val folderArray: JSONArray?
+        var contactArray: JSONArray? = null
         if (text.startsWith("[")) {
             linkArray = JSONArray(text)
             noteArray = null
@@ -68,6 +73,7 @@ class BackupManager(
             linkArray = root.optJSONArray("items")
             noteArray = root.optJSONArray("notes")
             folderArray = root.optJSONArray("folders")
+            contactArray = root.optJSONArray("contacts")
         }
         if (linkArray == null && noteArray == null) throw IOException("No links or notes found in this file")
 
@@ -111,19 +117,51 @@ class BackupManager(
             return created.id
         }
 
+        // Link ids in the backup -> link ids here (for contacts).
+        val linkIds = mutableMapOf<String, String>()
         if (linkArray != null) {
             for (i in 0 until linkArray.length()) {
                 val item = linkArray.optJSONObject(i)?.let { o ->
                     parseLink(o)?.copy(category = resolveFolder(o.str("category")))
                 }
-                if (item == null || links.findByUrl(item.url) != null || !links.insertImported(item)) skipped++
-                else importedLinks++
+                if (item == null) {
+                    skipped++
+                    continue
+                }
+                val existing = links.findByUrl(item.url)
+                when {
+                    existing != null -> {
+                        linkIds[item.id] = existing.id // already saved: contacts attach to it
+                        skipped++
+                    }
+                    links.insertImported(item) -> {
+                        linkIds[item.id] = item.id
+                        importedLinks++
+                    }
+                    else -> skipped++
+                }
             }
         }
         if (noteArray != null) {
             for (i in 0 until noteArray.length()) {
                 val note = noteArray.optJSONObject(i)?.let { parseNote(it) }
                 if (note == null || !notes.insertImported(note)) skipped++ else importedNotes++
+            }
+        }
+        if (contactArray != null) {
+            for (i in 0 until contactArray.length()) {
+                val obj = contactArray.optJSONObject(i) ?: continue
+                val linkId = obj.str("link_id")?.let { linkIds[it] } ?: continue
+                val contact = ContactEntity(
+                    id = validId(obj.str("id")),
+                    linkId = linkId,
+                    name = obj.str("name").orEmpty(),
+                    email = obj.str("email").orEmpty(),
+                    phone = obj.str("phone").orEmpty(),
+                    address = obj.str("address").orEmpty(),
+                    createdAt = parseTime(obj.str("created_at")) ?: System.currentTimeMillis(),
+                )
+                if (!contact.isBlank()) contacts.insertImported(contact)
             }
         }
         ImportResult(importedLinks, importedNotes, importedFolders, skipped)
@@ -188,6 +226,15 @@ class BackupManager(
         .put("pinned", pinned)
         .put("created_at", Instant.ofEpochMilli(createdAt).toString())
         .put("updated_at", Instant.ofEpochMilli(updatedAt).toString())
+
+    private fun ContactEntity.toJson(): JSONObject = JSONObject()
+        .put("id", id)
+        .put("link_id", linkId)
+        .put("name", name)
+        .put("email", email)
+        .put("phone", phone)
+        .put("address", address)
+        .put("created_at", Instant.ofEpochMilli(createdAt).toString())
 
     private fun parseFolder(obj: JSONObject): CategoryEntity? {
         val id = obj.str("id") ?: return null

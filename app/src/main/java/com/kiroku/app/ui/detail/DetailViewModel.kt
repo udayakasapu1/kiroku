@@ -17,6 +17,8 @@ import com.kiroku.app.data.AttachmentRepository
 import com.kiroku.app.data.CategoryEntity
 import com.kiroku.app.data.OwnerType
 import com.kiroku.app.data.CategoryRepository
+import com.kiroku.app.data.ContactEntity
+import com.kiroku.app.data.ContactRepository
 import com.kiroku.app.data.LinkEntity
 import com.kiroku.app.data.LinkRepository
 import com.kiroku.app.data.UrlEditResult
@@ -41,6 +43,7 @@ class DetailViewModel(
     private val repository: LinkRepository,
     private val categories: CategoryRepository,
     private val files: AttachmentRepository,
+    private val people: ContactRepository,
     private val appScope: CoroutineScope,
 ) : ViewModel() {
 
@@ -96,6 +99,7 @@ class DetailViewModel(
     fun retryFetch() = write { refetch(id) }
     fun delete() = write {
         files.removeAllFor(OwnerType.LINK, id)
+        people.deleteForLink(id)
         delete(id)
     }
 
@@ -112,6 +116,18 @@ class DetailViewModel(
             attaching = false
             if (failed > 0) messageChannel.send("Couldn't attach $failed file(s)")
         }
+    }
+
+    val contacts: StateFlow<List<ContactEntity>> by lazy {
+        people.observeFor(id).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    }
+
+    fun saveContact(contact: ContactEntity) {
+        appScope.launch { people.save(id, contact) }
+    }
+
+    fun deleteContact(contact: ContactEntity) {
+        appScope.launch { people.delete(contact.id) }
     }
 
     fun removeAttachment(attachment: AttachmentEntity) {
@@ -137,7 +153,7 @@ class DetailViewModel(
 
     companion object {
         fun factory(container: AppContainer) = viewModelFactory {
-            initializer { DetailViewModel(createSavedStateHandle(), container.links, container.categories, container.attachments, container.appScope) }
+            initializer { DetailViewModel(createSavedStateHandle(), container.links, container.categories, container.attachments, container.contacts, container.appScope) }
         }
     }
 }

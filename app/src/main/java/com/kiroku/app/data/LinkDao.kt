@@ -38,7 +38,12 @@ interface LinkDao {
                OR notes LIKE '%' || :query || '%'
                OR tags LIKE '%' || :query || '%'
                OR source_domain LIKE '%' || :query || '%'
-               OR site_name LIKE '%' || :query || '%')
+               OR site_name LIKE '%' || :query || '%'
+               OR id IN (SELECT link_id FROM contacts
+                         WHERE name LIKE '%' || :query || '%'
+                            OR email LIKE '%' || :query || '%'
+                            OR phone LIKE '%' || :query || '%'
+                            OR address LIKE '%' || :query || '%'))
         ORDER BY pinned DESC, created_at DESC
         """
     )

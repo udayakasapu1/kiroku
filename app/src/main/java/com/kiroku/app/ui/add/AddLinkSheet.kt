@@ -12,6 +12,7 @@ import androidx.compose.material.icons.filled.Tag
 import androidx.compose.material3.InputChip
 import androidx.compose.ui.platform.LocalContext
 import com.kiroku.app.ui.components.AttachmentRow
+import com.kiroku.app.ui.components.ContactsSection
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -191,6 +192,14 @@ fun AddLinkSheet(vm: AddLinkViewModel) {
                 keyboardActions = KeyboardActions(onDone = { vm.commitTagInput() }),
                 shape = MaterialTheme.shapes.medium,
                 modifier = Modifier.fillMaxWidth(),
+            )
+
+            // Contacts to add once the link is saved.
+            ContactsSection(
+                contacts = state.contacts,
+                onSave = vm::savePendingContact,
+                onDelete = vm::deletePendingContact,
+                enabled = !state.saving,
             )
 
             // Files to attach once the link is saved.

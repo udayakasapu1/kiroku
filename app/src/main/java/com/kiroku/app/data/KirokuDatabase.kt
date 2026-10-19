@@ -9,8 +9,8 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
-    entities = [LinkEntity::class, NoteEntity::class, CategoryEntity::class, AttachmentEntity::class],
-    version = 3,
+    entities = [LinkEntity::class, NoteEntity::class, CategoryEntity::class, AttachmentEntity::class, ContactEntity::class],
+    version = 4,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
@@ -19,11 +19,12 @@ abstract class KirokuDatabase : RoomDatabase() {
     abstract fun noteDao(): NoteDao
     abstract fun categoryDao(): CategoryDao
     abstract fun attachmentDao(): AttachmentDao
+    abstract fun contactDao(): ContactDao
 
     companion object {
         fun create(context: Context): KirokuDatabase =
             Room.databaseBuilder(context, KirokuDatabase::class.java, "kiroku.db")
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
                 .build()
 
         /**
@@ -46,6 +47,19 @@ abstract class KirokuDatabase : RoomDatabase() {
                     )
                 }
                 db.execSQL("UPDATE notes SET category = NULL")
+            }
+        }
+
+        /** v3 -> v4: contacts (name, email, phone, facility address) on links. */
+        val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `contacts` (" +
+                        "`id` TEXT NOT NULL, `link_id` TEXT NOT NULL, `name` TEXT NOT NULL, " +
+                        "`email` TEXT NOT NULL, `phone` TEXT NOT NULL, `address` TEXT NOT NULL, " +
+                        "`created_at` INTEGER NOT NULL, PRIMARY KEY(`id`))"
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_contacts_link_id` ON `contacts` (`link_id`)")
             }
         }
 
