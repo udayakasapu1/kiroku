@@ -28,6 +28,8 @@ import com.kiroku.app.ui.folders.ManageFoldersScreen
 import com.kiroku.app.ui.folders.ManageFoldersViewModel
 import com.kiroku.app.ui.home.HomeScreen
 import com.kiroku.app.ui.home.HomeViewModel
+import com.kiroku.app.ui.inbox.WebInboxScreen
+import com.kiroku.app.ui.inbox.WebInboxViewModel
 import com.kiroku.app.ui.note.NoteEditorScreen
 import com.kiroku.app.ui.note.NoteEditorViewModel
 import com.kiroku.app.ui.notes.NotesScreen
@@ -43,6 +45,7 @@ private const val LINK = "link/{id}"
 private const val NOTE = "note/{id}"
 private const val MANAGE_FOLDERS = "folders"
 private const val ONBOARDING = "onboarding"
+private const val WEB_INBOX = "web-inbox"
 
 /** Go to a space's home, replacing everything on the back stack. */
 private fun NavHostController.openSpace(space: Space) {
@@ -131,6 +134,7 @@ fun KirokuNavHost(container: AppContainer) {
                 onOpenFolder = { key -> nav.navigate("folder/$key") },
                 onOpenLink = { id -> nav.navigate("link/$id") },
                 onManageFolders = { nav.navigate(MANAGE_FOLDERS) },
+                onOpenWebInbox = { nav.navigate(WEB_INBOX) },
                 onAddLink = { addVm.open(null) },
             )
         }
@@ -163,6 +167,14 @@ fun KirokuNavHost(container: AppContainer) {
                 onBack = { nav.popBackStack() },
                 onOpenLink = { id -> nav.navigate("link/$id") },
                 onAddLink = { category -> addVm.open(category) },
+            )
+        }
+        composable(WEB_INBOX) {
+            val context = androidx.compose.ui.platform.LocalContext.current
+            WebInboxScreen(
+                vm = viewModel(factory = WebInboxViewModel.factory(container, context)),
+                snackbar = snackbar,
+                onBack = { nav.popBackStack() },
             )
         }
         composable(MANAGE_FOLDERS) {

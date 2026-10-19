@@ -19,6 +19,7 @@ import androidx.compose.material.icons.outlined.CreateNewFolder
 import androidx.compose.material.icons.outlined.FileDownload
 import androidx.compose.material.icons.outlined.FileUpload
 import androidx.compose.material.icons.outlined.FolderOpen
+import androidx.compose.material.icons.outlined.Language
 import androidx.compose.material.icons.outlined.SearchOff
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenuItem
@@ -61,6 +62,7 @@ fun HomeScreen(
     onOpenFolder: (String) -> Unit,
     onOpenLink: (String) -> Unit,
     onManageFolders: () -> Unit,
+    onOpenWebInbox: () -> Unit,
     onAddLink: () -> Unit,
 ) {
     val state by vm.state.collectAsStateWithLifecycle()
@@ -97,6 +99,11 @@ fun HomeScreen(
                         text = { Text("Manage folders") },
                         leadingIcon = { Icon(Icons.Outlined.FolderOpen, null) },
                         onClick = { close(); onManageFolders() },
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Web inbox") },
+                        leadingIcon = { Icon(Icons.Outlined.Language, null) },
+                        onClick = { close(); onOpenWebInbox() },
                     )
                     DropdownMenuItem(
                         text = { Text("Retry fetching details") },

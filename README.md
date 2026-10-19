@@ -53,7 +53,25 @@ then uninstall Gurthu.
 | Tags | Type them right in the save-a-link sheet (Enter or comma adds one), or later on the link's page |
 | Contacts | **Add contact** on a link's page or while saving it: name, email, phone, facility address. Tap the icons to email, call or open the address in Maps. Search finds links by contact too |
 | Attach files | **Attach file** on a link's page, in a note, or while saving a link. Opens your Files app; files are copied into Kiroku. Tap a file to open it |
+| Save from a laptop | ⋮ → **Web inbox** (one-time setup below). Links saved in the browser show up on the phone |
 | Backup | ⋮ → Export backup / Import backup (JSON; folders, links and notes; **attached files are not included**) |
+
+## Web inbox (save links from a laptop)
+
+The phone stays the only place your links live. The web page only drops new links into a small
+inbox in your own Supabase project, and Kiroku picks them up when you open the app and about every
+15 minutes after that.
+
+One-time setup:
+
+1. **Supabase:** open SQL Editor → New query, paste [`supabase/kiroku_inbox.sql`](supabase/kiroku_inbox.sql), Run.
+   The tables are locked; the page and the app can only reach them through functions that need your inbox key.
+2. **GitHub Pages:** repo Settings → Pages → Source: **GitHub Actions**. Then Actions → "Publish web inbox" → Run workflow.
+   The page is at https://udayakasapu1.github.io/kiroku/
+3. **Phone:** ⋮ → Web inbox → paste the Project URL and anon public key (Supabase → Project Settings → API) → Connect.
+4. **Laptop:** tap **Share link** in the app, send it to the laptop, open it once. Drag the "Save to Kiroku" button to the bookmarks bar.
+
+The setup link holds your inbox key, so keep it private. "Disconnect all browsers" in the app makes a new key.
 
 ## How it works
 

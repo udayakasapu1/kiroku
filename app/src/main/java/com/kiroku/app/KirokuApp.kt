@@ -10,6 +10,7 @@ import com.kiroku.app.data.KirokuDatabase
 import com.kiroku.app.data.LinkRepository
 import com.kiroku.app.data.NoteRepository
 import com.kiroku.app.fetch.MetadataFetcher
+import com.kiroku.app.inbox.WebInbox
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -26,6 +27,7 @@ class KirokuApp : Application() {
         container = AppContainer(this)
         // Clean up duplicate folders left by older versions (e.g. two "Tier 1").
         container.appScope.launch { runCatching { container.categories.mergeDuplicates() } }
+        if (container.inbox.isConfigured) WebInbox.schedule(this)
     }
 }
 
@@ -53,5 +55,6 @@ class AppContainer(context: Context) {
     val attachments = AttachmentRepository(appContext, database.attachmentDao())
     val contacts = ContactRepository(database.contactDao())
     val backup = BackupManager(appContext, links, notes, categories, contacts)
+    val inbox = WebInbox(prefs, httpClient, links, categories)
     val shares = ShareInbox()
 }

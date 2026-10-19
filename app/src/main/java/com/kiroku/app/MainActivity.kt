@@ -5,6 +5,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import com.kiroku.app.inbox.WebInbox
 import com.kiroku.app.ui.KirokuNavHost
 import com.kiroku.app.ui.theme.KirokuTheme
 
@@ -23,6 +24,12 @@ class MainActivity : ComponentActivity() {
                 KirokuNavHost(container)
             }
         }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        // Pick up links saved from the browser as soon as the app is opened.
+        if (container.inbox.isConfigured) WebInbox.checkSoon(this)
     }
 
     /** App already running (singleTask): a new share arrives here. */
