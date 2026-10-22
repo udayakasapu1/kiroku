@@ -19,6 +19,7 @@ import com.kiroku.app.data.ContactRepository
 import com.kiroku.app.data.LinkEntity
 import com.kiroku.app.data.LinkRepository
 import com.kiroku.app.data.SaveResult
+import com.kiroku.app.data.Status
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
@@ -43,6 +44,49 @@ data class WebContact(val id: String, val name: String, val email: String, val p
         ContactEntity(id = id, linkId = linkId, name = name, email = email, phone = phone, address = address, createdAt = createdAt)
 
     fun toJson(): JSONObject = JSONObject().put("id", id).put("name", name).put("email", email).put("phone", phone).put("address", address)
+}
+
+/** What the app shows for a link besides the fields that can be edited on the web. */
+data class WebExtras(
+    val description: String?,
+    val imageUrl: String?,
+    val siteName: String?,
+    val archived: Boolean,
+    val pinned: Boolean,
+    val savedMs: Long?,
+) {
+    fun addTo(json: JSONObject): JSONObject = json
+        .put("description", description ?: JSONObject.NULL)
+        .put("image_url", imageUrl ?: JSONObject.NULL)
+        .put("site_name", siteName ?: JSONObject.NULL)
+        .put("archived", archived)
+        .put("pinned", pinned)
+        .put("saved_ms", savedMs ?: JSONObject.NULL)
+
+    companion object {
+        private fun String?.limit(max: Int): String? = this?.trim()?.take(max)?.trim()?.takeIf { it.isNotEmpty() }
+
+        fun fromPhone(link: LinkEntity) = WebExtras(
+            description = link.description.limit(2000),
+            imageUrl = link.previewImageUrl.limit(2000),
+            siteName = link.siteName.limit(200),
+            archived = link.status == Status.ARCHIVED,
+            pinned = link.pinned,
+            savedMs = link.createdAt,
+        )
+
+        fun from(json: JSONObject): WebExtras {
+            fun text(key: String): String? = if (json.isNull(key)) null else json.optString(key).trim().takeIf { it.isNotEmpty() }
+            return WebExtras(
+                description = text("description"),
+                imageUrl = text("image_url"),
+                siteName = text("site_name"),
+                archived = json.optBoolean("archived", false),
+                pinned = json.optBoolean("pinned", false),
+                savedMs = if (json.isNull("saved_ms")) null else json.optLong("saved_ms"),
+            )
+        }
+    }
 }
 
 /** One link as the web page has it. */
@@ -108,8 +152,9 @@ data class WebItem(
 
 /**
  * Web inbox: links saved from a browser (web/index.html) wait in Supabase until this
- * picks them up and saves them like any other link. Links stay listed on the web page for a
- * while and can still be edited there; those edits are copied to the phone too.
+ * picks them up and saves them like any other link. The phone also keeps a copy of its whole
+ * library there (unless turned off), so the web page can show and edit every link; web edits
+ * are copied to the phone and phone changes are sent back on each check.
  */
 class WebInbox(
     private val prefs: AppPrefs,
@@ -230,31 +275,60 @@ class WebInbox(
     }
 
     /**
-     * Keeps the web page's list showing what the phone has: fetched titles, edits made on the
-     * phone. Links deleted on the phone disappear from the web list.
+     * Keeps the web page showing what the phone has: fetched titles, edits made on the phone,
+     * and (unless turned off) every other link too. Links deleted on the phone leave the web.
      */
     private suspend fun sendBack() {
         val collected = JSONArray(rpc("kiroku_inbox_collected", JSONObject()))
-        if (collected.length() == 0) return
         val folderNames = categories.getAll().associate { it.id to it.name }
+        val contactsByLink = contacts.getAll().groupBy { it.linkId }
+        fun current(link: LinkEntity) =
+            WebItem.fromPhone(link, link.category?.let { folderNames[it] }, contactsByLink[link.id].orEmpty())
+
+        val onWeb = mutableSetOf<String>()
         val refresh = JSONArray()
         val forget = JSONArray()
         for (i in 0 until collected.length()) {
             val row = collected.getJSONObject(i)
+            val linkId = row.str("link_id") ?: continue
+            onWeb += linkId
+            if (row.optBoolean("pending")) continue // a web edit is on its way to the phone first
             val id = row.getString("id")
             val version = row.optInt("version", 1)
-            val link = row.str("link_id")?.let { links.getById(it) }
+            val link = links.getById(linkId)
             if (link == null) {
                 forget.put(JSONObject().put("id", id).put("version", version))
                 continue
             }
-            val phone = WebItem.fromPhone(link, link.category?.let { folderNames[it] }, contacts.getFor(link.id))
+            val phone = current(link)
+            val extras = WebExtras.fromPhone(link)
             val web = row.optJSONObject("delivered")?.let { WebItem.from(it) }
-            if (phone != web) refresh.put(phone.toJson().put("id", id).put("version", version))
+            val webExtras = row.optJSONObject("extras")?.let { WebExtras.from(it) }
+            if (phone != web || extras != webExtras) {
+                refresh.put(extras.addTo(phone.toJson()).put("id", id).put("version", version))
+            }
         }
-        if (refresh.length() > 0) rpc("kiroku_inbox_refresh", JSONObject().put("p_items", refresh))
-        if (forget.length() > 0) rpc("kiroku_inbox_forget", JSONObject().put("p_items", forget))
+        val publish = JSONArray()
+        if (prefs.inboxMirror) {
+            for (link in links.allItems()) {
+                if (link.id in onWeb) continue
+                publish.put(WebExtras.fromPhone(link).addTo(current(link).toJson()).put("link_id", link.id))
+            }
+        }
+        refresh.chunks().forEach { rpc("kiroku_inbox_refresh", JSONObject().put("p_items", it)) }
+        forget.chunks().forEach { rpc("kiroku_inbox_forget", JSONObject().put("p_items", it)) }
+        publish.chunks().forEach { rpc("kiroku_inbox_publish", JSONObject().put("p_items", it)) }
     }
+
+    /** Turns the web copy of the whole library on or off. Off removes it from Supabase. */
+    suspend fun setMirror(on: Boolean) {
+        prefs.inboxMirror = on
+        if (!isConfigured) return
+        if (on) checkNow() else lock.withLock { rpc("kiroku_inbox_unpublish", JSONObject()) }
+    }
+
+    private fun JSONArray.chunks(size: Int = 200): List<JSONArray> =
+        (0 until length()).chunked(size).map { idx -> JSONArray().also { out -> idx.forEach { out.put(get(it)) } } }
 
     private suspend fun folderId(name: String?): String? = name?.let { categories.create(it, "folder").id }
 

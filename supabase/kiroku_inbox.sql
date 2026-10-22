@@ -1,8 +1,9 @@
 -- =============================================================================
--- Kiroku web inbox  (version 3: contacts, editing after saving, two-way titles)
+-- Kiroku web inbox  (version 4: all your links on the web)
 -- Links added from a browser wait here until the Kiroku app on the phone picks
--- them up. Saved links stay listed (and editable) on the web page for 60 days:
--- edits made there are copied to the phone on its next check, and the phone
+-- them up. The phone also keeps a copy of all its links here (unless that is
+-- turned off in the app), so the web page can show and edit your whole library:
+-- edits made on the web are copied to the phone on its next check, and the phone
 -- sends back its own current version (fetched titles, edits made on the phone).
 --
 -- Run this in Supabase: Dashboard -> SQL Editor -> New query -> paste everything
@@ -31,7 +32,20 @@ alter table public.kiroku_inbox add column if not exists delivered_version integ
 alter table public.kiroku_inbox add column if not exists delivered         jsonb;     -- what the phone got then
 alter table public.kiroku_inbox add column if not exists link_id           text;      -- the link's id on the phone
 alter table public.kiroku_inbox add column if not exists updated_at        timestamptz not null default now();
+-- Version 4 columns: the rest of what the app shows for a link.
+alter table public.kiroku_inbox add column if not exists origin      text not null default 'web';  -- 'web' or 'phone'
+alter table public.kiroku_inbox add column if not exists description text;
+alter table public.kiroku_inbox add column if not exists image_url   text;
+alter table public.kiroku_inbox add column if not exists site_name   text;
+alter table public.kiroku_inbox add column if not exists archived    boolean not null default false;
+alter table public.kiroku_inbox add column if not exists pinned      boolean not null default false;
+alter table public.kiroku_inbox add column if not exists saved_ms    bigint;   -- when it was saved on the phone
 create index if not exists kiroku_inbox_inbox_idx on public.kiroku_inbox (inbox, created_at);
+-- One row per phone link (older versions could leave two after saving a link twice).
+delete from public.kiroku_inbox a using public.kiroku_inbox b
+where a.inbox = b.inbox and a.link_id = b.link_id and a.link_id is not null and a.id <> b.id
+  and (a.updated_at, a.id) < (b.updated_at, b.id);
+create unique index if not exists kiroku_inbox_link_idx on public.kiroku_inbox (inbox, link_id) where link_id is not null;
 
 -- Folder names the phone shares so the web page can suggest them.
 create table if not exists public.kiroku_inbox_meta (
@@ -48,6 +62,8 @@ alter table public.kiroku_inbox_meta enable row level security;
 drop function if exists public.kiroku_inbox_add(text, text, text, text, text[], text);
 drop function if exists public.kiroku_inbox_list(text);
 drop function if exists public.kiroku_inbox_update(text, uuid, text, text, text, text[], text, jsonb);
+drop function if exists public.kiroku_inbox_recent(text);
+drop function if exists public.kiroku_inbox_collected(text);
 
 create or replace function public.kiroku_inbox_hash(p_key text)
 returns text language plpgsql immutable
@@ -113,9 +129,6 @@ begin
   if public.kiroku_inbox_text(p_url, 4000) is null then
     raise exception 'url is required';
   end if;
-  -- Saved links are listed on the web page for 60 days.
-  delete from public.kiroku_inbox
-  where inbox = v_inbox and delivered_version = version and created_at < now() - interval '60 days';
   if (select count(*) from public.kiroku_inbox
       where inbox = v_inbox and delivered_version is distinct from version) >= 500 then
     raise exception 'inbox is full: open Kiroku on your phone to collect waiting links';
@@ -134,6 +147,14 @@ returns jsonb language sql immutable
 as $$
   select jsonb_build_object('url', i.url, 'title', i.title, 'folder', i.folder,
                             'tags', to_jsonb(i.tags), 'note', i.note, 'contacts', i.contacts)
+$$;
+
+-- What the app shows besides the editable fields (sent by the phone, shown on the web).
+create or replace function public.kiroku_inbox_extras(i public.kiroku_inbox)
+returns jsonb language sql immutable
+as $$
+  select jsonb_build_object('description', i.description, 'image_url', i.image_url, 'site_name', i.site_name,
+                            'archived', i.archived, 'pinned', i.pinned, 'saved_ms', i.saved_ms)
 $$;
 
 -- Change a link (web page). Works before and after the phone has it. p_changes holds
@@ -180,21 +201,25 @@ begin
   delete from public.kiroku_inbox where inbox = public.kiroku_inbox_hash(p_key) and id = p_id;
 end $$;
 
--- Recent links for the web page: waiting ones and ones already on the phone.
+-- All links for the web page: ones saved here, and the phone's copy of its library.
 create or replace function public.kiroku_inbox_recent(p_key text)
 returns table (id uuid, url text, title text, folder text, tags text[], note text, contacts jsonb,
-               on_phone boolean, pending boolean, created_at timestamptz, updated_at timestamptz)
+               on_phone boolean, pending boolean, origin text, description text, image_url text,
+               site_name text, archived boolean, pinned boolean, saved_ms bigint,
+               created_at timestamptz, updated_at timestamptz)
 language sql security definer stable
 set search_path = pg_catalog, public
 as $$
   select i.id, i.url, i.title, i.folder, i.tags, i.note, i.contacts,
          i.link_id is not null or i.delivered_version is not null,
          i.delivered_version is distinct from i.version,
+         i.origin, i.description, i.image_url, i.site_name, i.archived, i.pinned,
+         coalesce(i.saved_ms, (extract(epoch from i.created_at) * 1000)::bigint),
          i.created_at, i.updated_at
   from public.kiroku_inbox i
   where i.inbox = public.kiroku_inbox_hash(p_key)
-  order by i.created_at desc
-  limit 100;
+  order by coalesce(i.saved_ms, (extract(epoch from i.created_at) * 1000)::bigint) desc
+  limit 10000;
 $$;
 
 -- New or changed links (phone). "delivered" is what the phone got last time, so it
@@ -218,30 +243,44 @@ create or replace function public.kiroku_inbox_done(p_key text, p_items jsonb)
 returns integer language plpgsql security definer
 set search_path = pg_catalog, public
 as $$
-declare n integer;
+declare
+  v_inbox text := public.kiroku_inbox_hash(p_key);
+  x jsonb;
+  n integer := 0;
+  c integer;
 begin
-  update public.kiroku_inbox i set
-    delivered_version = greatest(coalesce(i.delivered_version, 0), (x->>'version')::integer),
-    link_id = coalesce(x->>'link_id', i.link_id),
-    delivered = coalesce(x->'snapshot', i.delivered)
-  from jsonb_array_elements(case when jsonb_typeof(p_items) = 'array' then p_items else '[]'::jsonb end) as x
-  where i.inbox = public.kiroku_inbox_hash(p_key)
-    and i.id = (x->>'id')::uuid
-    and (x->>'version')::integer >= coalesce(i.delivered_version, 0);
-  get diagnostics n = row_count;
+  -- One item at a time: a link saved twice ends up as one link on the phone, so the
+  -- older row for that link is removed before this one takes the link over.
+  for x in select * from jsonb_array_elements(case when jsonb_typeof(p_items) = 'array' then p_items else '[]'::jsonb end)
+  loop
+    if x->>'link_id' is not null then
+      delete from public.kiroku_inbox i
+      where i.inbox = v_inbox and i.link_id = x->>'link_id' and i.id <> (x->>'id')::uuid;
+    end if;
+    update public.kiroku_inbox i set
+      delivered_version = greatest(coalesce(i.delivered_version, 0), (x->>'version')::integer),
+      link_id = coalesce(x->>'link_id', i.link_id),
+      delivered = coalesce(x->'snapshot', i.delivered)
+    where i.inbox = v_inbox
+      and i.id = (x->>'id')::uuid
+      and (x->>'version')::integer >= coalesce(i.delivered_version, 0);
+    get diagnostics c = row_count;
+    n := n + c;
+  end loop;
   return n;
 end $$;
 
--- Links the phone has, with what the web page shows for them (phone).
+-- Every row that belongs to a phone link, with what the web page shows for it (phone).
+-- "pending" rows have a web edit the phone hasn't collected yet.
 create or replace function public.kiroku_inbox_collected(p_key text)
-returns table (id uuid, version integer, link_id text, delivered jsonb)
+returns table (id uuid, version integer, link_id text, pending boolean, delivered jsonb, extras jsonb)
 language sql security definer stable
 set search_path = pg_catalog, public
 as $$
-  select i.id, i.version, i.link_id, public.kiroku_inbox_snapshot(i)
+  select i.id, i.version, i.link_id, i.delivered_version is distinct from i.version,
+         public.kiroku_inbox_snapshot(i), public.kiroku_inbox_extras(i)
   from public.kiroku_inbox i
-  where i.inbox = public.kiroku_inbox_hash(p_key)
-    and i.link_id is not null and i.delivered_version = i.version;
+  where i.inbox = public.kiroku_inbox_hash(p_key) and i.link_id is not null;
 $$;
 
 -- The phone's current version of links it has: [{id, version, url, title, folder, tags,
@@ -259,7 +298,13 @@ begin
     tags     = public.kiroku_inbox_clean_tags(array(select jsonb_array_elements_text(
                  case when jsonb_typeof(x->'tags') = 'array' then x->'tags' else '[]'::jsonb end))),
     note     = public.kiroku_inbox_text(x->>'note', 4000),
-    contacts = public.kiroku_inbox_clean_contacts(x->'contacts')
+    contacts = public.kiroku_inbox_clean_contacts(x->'contacts'),
+    description = public.kiroku_inbox_text(x->>'description', 2000),
+    image_url   = public.kiroku_inbox_text(x->>'image_url', 2000),
+    site_name   = public.kiroku_inbox_text(x->>'site_name', 200),
+    archived    = coalesce((x->>'archived')::boolean, false),
+    pinned      = coalesce((x->>'pinned')::boolean, false),
+    saved_ms    = coalesce((x->>'saved_ms')::bigint, i.saved_ms)
   from jsonb_array_elements(case when jsonb_typeof(p_items) = 'array' then p_items else '[]'::jsonb end) as x
   where i.inbox = public.kiroku_inbox_hash(p_key)
     and i.id = (x->>'id')::uuid
@@ -291,6 +336,65 @@ begin
   get diagnostics n = row_count;
   return n;
 end $$;
+
+-- The phone adds links the web page doesn't have yet (its library copy):
+-- [{link_id, url, title, folder, tags, note, contacts, description, image_url, site_name,
+--   archived, pinned, saved_ms}].
+create or replace function public.kiroku_inbox_publish(p_key text, p_items jsonb)
+returns integer language plpgsql security definer
+set search_path = pg_catalog, public
+as $$
+declare
+  v_inbox text := public.kiroku_inbox_hash(p_key);
+  n integer;
+begin
+  insert into public.kiroku_inbox (inbox, origin, link_id, version, delivered_version, url, title, folder, tags,
+                                   note, contacts, description, image_url, site_name, archived, pinned, saved_ms)
+  select v_inbox, 'phone', left(x->>'link_id', 80), 1, 1,
+         public.kiroku_inbox_text(x->>'url', 4000), public.kiroku_inbox_text(x->>'title', 500),
+         public.kiroku_inbox_text(x->>'folder', 80),
+         public.kiroku_inbox_clean_tags(array(select jsonb_array_elements_text(
+           case when jsonb_typeof(x->'tags') = 'array' then x->'tags' else '[]'::jsonb end))),
+         public.kiroku_inbox_text(x->>'note', 4000), public.kiroku_inbox_clean_contacts(x->'contacts'),
+         public.kiroku_inbox_text(x->>'description', 2000), public.kiroku_inbox_text(x->>'image_url', 2000),
+         public.kiroku_inbox_text(x->>'site_name', 200), coalesce((x->>'archived')::boolean, false),
+         coalesce((x->>'pinned')::boolean, false), (x->>'saved_ms')::bigint
+  from jsonb_array_elements(case when jsonb_typeof(p_items) = 'array' then p_items else '[]'::jsonb end) as x
+  where public.kiroku_inbox_text(x->>'link_id', 80) is not null
+    and public.kiroku_inbox_text(x->>'url', 4000) is not null
+  on conflict (inbox, link_id) where link_id is not null do nothing;
+  get diagnostics n = row_count;
+  update public.kiroku_inbox i set delivered = public.kiroku_inbox_snapshot(i)
+  where i.inbox = v_inbox and i.origin = 'phone' and i.delivered is null;
+  return n;
+end $$;
+
+-- "Show all my links on the web" turned off: remove the phone's library copy
+-- (links saved on the web page stay listed).
+create or replace function public.kiroku_inbox_unpublish(p_key text)
+returns integer language plpgsql security definer
+set search_path = pg_catalog, public
+as $$
+declare n integer;
+begin
+  delete from public.kiroku_inbox
+  where inbox = public.kiroku_inbox_hash(p_key) and origin = 'phone'
+    and delivered_version is not distinct from version;
+  get diagnostics n = row_count;
+  return n;
+end $$;
+
+-- Folders (in the phone's order) and when the phone last checked in (web page).
+create or replace function public.kiroku_inbox_info(p_key text)
+returns jsonb language sql security definer stable
+set search_path = pg_catalog, public
+as $$
+  select jsonb_build_object(
+    'folders', coalesce(m.folders, '{}'),
+    'synced_at', m.updated_at)
+  from (select public.kiroku_inbox_hash(p_key) as h) k
+  left join public.kiroku_inbox_meta m on m.inbox = k.h;
+$$;
 
 -- Version 1 phones (Kiroku 0.6.0): mark links as collected instead of deleting them.
 create or replace function public.kiroku_inbox_ack(p_key text, p_ids uuid[])
@@ -334,6 +438,9 @@ revoke all on function public.kiroku_inbox_list(text)                           
 revoke all on function public.kiroku_inbox_done(text, jsonb)                                        from public;
 revoke all on function public.kiroku_inbox_ack(text, uuid[])                                        from public;
 revoke all on function public.kiroku_inbox_set_folders(text, text[])                                from public;
+revoke all on function public.kiroku_inbox_publish(text, jsonb)                                      from public;
+revoke all on function public.kiroku_inbox_unpublish(text)                                           from public;
+revoke all on function public.kiroku_inbox_info(text)                                                from public;
 revoke all on function public.kiroku_inbox_folders(text)                                            from public;
 
 grant execute on function public.kiroku_inbox_add(text, text, text, text, text[], text, jsonb)          to anon, authenticated;
@@ -347,4 +454,7 @@ grant execute on function public.kiroku_inbox_list(text)                        
 grant execute on function public.kiroku_inbox_done(text, jsonb)                                        to anon, authenticated;
 grant execute on function public.kiroku_inbox_ack(text, uuid[])                                        to anon, authenticated;
 grant execute on function public.kiroku_inbox_set_folders(text, text[])                                to anon, authenticated;
+grant execute on function public.kiroku_inbox_publish(text, jsonb)                                      to anon, authenticated;
+grant execute on function public.kiroku_inbox_unpublish(text)                                           to anon, authenticated;
+grant execute on function public.kiroku_inbox_info(text)                                                to anon, authenticated;
 grant execute on function public.kiroku_inbox_folders(text)                                            to anon, authenticated;

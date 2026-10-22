@@ -3,6 +3,23 @@
 Every version's APK is on the [Releases page](https://github.com/udayakasapu1/kiroku/releases).
 Each one installs over the previous one and keeps your data (all builds share one signing key).
 
+## 0.8.0 (2026-10-22): all your links on the web page
+
+**Needs the Supabase setup script run again** (it upgrades the inbox; nothing is lost).
+
+- The web page now shows your **whole library**, like the app: folders with link counts, search
+  (titles, links, descriptions, notes, tags, contacts), pinned links first, preview images, and archived links behind "Show archived".
+- **Edit any link on the web**, including ones saved on the phone. Changes reach the phone on its
+  next sync, and only the fields you changed are updated there.
+- Adding a link that's already in Kiroku shows "Already in Kiroku" with a button to edit that link instead.
+- The page shows when your phone last synced. The phone now also syncs when you leave the app,
+  besides when you open it and about every 15 minutes.
+- New switch in the app (⋮ → Web inbox): **Show all my links on the web page**, on by default.
+  Turning it off removes the phone's copy from Supabase; links saved on the web stay listed there.
+  Attached files and notes stay on the phone.
+- The save form now opens with **＋ Save a link** (or the bookmark button) instead of always being shown.
+- Fixed: the same link saved twice on the web before the phone synced could stop syncing.
+
 ## 0.7.1 (2026-10-19): titles sync both ways with the web inbox
 
 **Needs the Supabase setup script run again** (it upgrades the inbox; nothing is lost).

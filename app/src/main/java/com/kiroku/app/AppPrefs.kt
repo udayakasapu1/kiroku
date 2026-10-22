@@ -43,6 +43,11 @@ class AppPrefs(context: Context) {
         get() = prefs.getString("inbox_last_error", "").orEmpty()
         set(value) = prefs.edit().putString("inbox_last_error", value).apply()
 
+    /** Keep a copy of all links in the web inbox so the web page can show the whole library. */
+    var inboxMirror: Boolean
+        get() = prefs.getBoolean("inbox_mirror", true)
+        set(value) = prefs.edit().putBoolean("inbox_mirror", value).apply()
+
     companion object {
         const val SPACE_LINKS = "links"
         const val SPACE_NOTES = "notes"

@@ -276,6 +276,127 @@ class WebInboxSyncTest {
         assertFalse(webRow(id)!!.getBoolean("pending"))
     }
 
+    // ---- The whole library on the web ----
+
+    private fun webRows(): List<JSONObject> {
+        val rows = JSONArray(rpc("kiroku_inbox_recent", JSONObject()))
+        return (0 until rows.length()).map { rows.getJSONObject(it) }
+    }
+
+    private fun webByUrl(url: String): List<JSONObject> {
+        val key = UrlUtils.normalize(url)
+        return webRows().filter { UrlUtils.normalize(it.getString("url")) == key }
+    }
+
+    private fun phoneSave(url: String, title: String? = null): LinkEntity =
+        (runBlocking { env.links.save(url, titleHint = title) } as SaveResult.Saved).item
+
+    @Test fun phoneLibraryShowsOnTheWeb() {
+        val a = env.page("/m1", "Gearbox supplier")
+        val b = env.page("/m2", "Old catalogue")
+        val la = phoneSave(a)
+        val lb = phoneSave(b, title = "Catalogue 2019")
+        runBlocking {
+            env.links.fetchAndApply(la.id)
+            val oem = env.categories.create("OEM", "folder")
+            env.links.setCategory(la.id, oem.id)
+            env.links.setTags(la.id, listOf("gearbox", "tier1"))
+            env.links.setPinned(la.id, true)
+            env.contacts.save(la.id, ContactRepository.draft().copy(name = "Carla", email = "carla@gear.example"))
+            env.links.archive(lb.id)
+        }
+        check()
+        val ra = webByUrl(a).single()
+        assertEquals("Gearbox supplier", ra.text("title"))
+        assertEquals("OEM", ra.text("folder"))
+        assertEquals(listOf("gearbox", "tier1"), ra.getJSONArray("tags").let { t -> List(t.length()) { t.getString(it) } })
+        assertEquals("About /m1", ra.text("description"))
+        assertTrue(ra.getBoolean("pinned"))
+        assertFalse(ra.getBoolean("archived"))
+        assertTrue(ra.getBoolean("on_phone"))
+        assertFalse(ra.getBoolean("pending"))
+        assertEquals("phone", ra.getString("origin"))
+        assertEquals("Carla", ra.getJSONArray("contacts").getJSONObject(0).getString("name"))
+        assertEquals(la.createdAt, ra.getLong("saved_ms"))
+        val rb = webByUrl(b).single()
+        assertEquals("Catalogue 2019", rb.text("title"))
+        assertTrue(rb.getBoolean("archived"))
+    }
+
+    @Test fun editingAPhoneLinkOnTheWebReachesThePhone() {
+        val url = env.page("/m3", "Fetched")
+        val link = phoneSave(url)
+        check()
+        val id = webByUrl(url).single().getString("id")
+        webEdit(id, JSONObject().put("title", "Named on web").put("note", "web note").put("folder", "Tools"))
+        assertTrue(webRow(id)!!.getBoolean("pending"))
+        check()
+        val after = runBlocking { env.links.getById(link.id) }!!
+        assertEquals("Named on web", after.title)
+        assertEquals("web note", after.notes)
+        assertEquals("Tools", runBlocking { env.categories.getAll() }.single { it.id == after.category }.name)
+        assertFalse(webRow(id)!!.getBoolean("pending"))
+        assertEquals(1, webByUrl(url).size)
+    }
+
+    @Test fun phoneChangesFollowOnTheWeb() {
+        val url = env.page("/m4", "Page")
+        val link = phoneSave(url)
+        check()
+        runBlocking {
+            env.links.updateTitle(link.id, "Renamed on phone")
+            env.links.archive(link.id)
+        }
+        check()
+        val row = webByUrl(url).single()
+        assertEquals("Renamed on phone", row.text("title"))
+        assertTrue(row.getBoolean("archived"))
+        runBlocking { env.links.delete(link.id) }
+        check()
+        assertTrue(webByUrl(url).isEmpty())
+    }
+
+    @Test fun turningTheWebCopyOffAndOn() {
+        val phoneUrl = env.page("/m5", "Phone page")
+        phoneSave(phoneUrl)
+        val webUrl = env.page("/m6", "Web page")
+        webAdd(webUrl, title = "Saved on web")
+        check()
+        assertEquals(1, webByUrl(phoneUrl).size)
+        runBlocking { inbox.setMirror(false) }
+        assertTrue(webByUrl(phoneUrl).isEmpty())   // the library copy is gone
+        assertEquals(1, webByUrl(webUrl).size)      // what was saved on the web stays
+        check()
+        assertTrue(webByUrl(phoneUrl).isEmpty())   // and isn't sent again
+        runBlocking { inbox.setMirror(true) }
+        assertEquals(1, webByUrl(phoneUrl).size)
+    }
+
+    @Test fun savingTheSameLinkTwiceOnTheWebGivesOneLink() {
+        val url = env.page("/m7", "Page")
+        webAdd(url, title = "First", tags = listOf("a"))
+        webAdd("$url?utm_source=x", tags = listOf("b"))
+        check()
+        assertEquals(1, runBlocking { env.links.allItems() }.size)
+        assertEquals(1, webByUrl(url).size)
+        assertEquals(listOf("a", "b"), phone(url).tags)
+        check()
+        assertEquals(1, webByUrl(url).size)
+    }
+
+    @Test fun savingOnTheWebALinkThePhoneAlreadySent() {
+        val url = env.page("/m8", "Fetched title")
+        val link = phoneSave(url)
+        runBlocking { env.links.fetchAndApply(link.id) }
+        check()
+        webAdd(url, title = "Typed on web", note = "context")
+        check()
+        assertEquals(1, webByUrl(url).size)
+        assertEquals("Typed on web", phone(url).title)
+        assertEquals("context", phone(url).notes)
+        assertEquals("Typed on web", webByUrl(url).single().text("title"))
+    }
+
     private fun jwt(secret: String): String {
         val enc = Base64.getUrlEncoder().withoutPadding()
         val head = enc.encodeToString("""{"alg":"HS256","typ":"JWT"}""".toByteArray())

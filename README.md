@@ -57,7 +57,7 @@ then uninstall Gurthu.
 | Tags | Type them right in the save-a-link sheet (Enter or comma adds one), or later on the link's page |
 | Contacts | **Add contact** on a link's page or while saving it: name, email, phone, facility address. Tap the icons to email, call or open the address in Maps. Search finds links by contact too |
 | Attach files | **Attach file** on a link's page, in a note, or while saving a link. Opens your Files app; files are copied into Kiroku. Tap a file to open it |
-| Save from a laptop | ⋮ → **Web inbox** (one-time setup below). Links saved in the browser show up on the phone |
+| Your links on a laptop | ⋮ → **Web inbox** (one-time setup below). The web page shows all your links (folders, search) and lets you add and edit them |
 | Backup | ⋮ → Export backup / Import backup (JSON; folders, links and notes; **attached files are not included**) |
 
 ## Web inbox (save links from a laptop)

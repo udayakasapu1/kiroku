@@ -33,6 +33,29 @@ class WebInboxViewModel(
         private set
     var message by mutableStateOf<String?>(null)
         private set
+    var mirror by mutableStateOf(prefs.inboxMirror)
+        private set
+
+    /** "Show all my links on the web page". */
+    fun setMirror(on: Boolean) {
+        if (busy) return
+        mirror = on
+        busy = true
+        viewModelScope.launch {
+            try {
+                inbox.setMirror(on)
+                message = if (on) "Your links are now on the web page" else "Your links were removed from the web page"
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                message = "Saved, but couldn't reach your inbox yet: ${e.message ?: e.javaClass.simpleName}"
+            } finally {
+                busy = false
+                lastCheck = prefs.inboxLastCheck
+                lastError = prefs.inboxLastError
+            }
+        }
+    }
 
     fun consumeMessage() {
         message = null
@@ -59,7 +82,7 @@ class WebInboxViewModel(
                 val result = inbox.checkNow()
                 configured = true
                 message = onSuccess() ?: when {
-                    result.added == 0 && result.updated == 0 && result.alreadySaved == 0 -> "Nothing new from the web"
+                    result.added == 0 && result.updated == 0 && result.alreadySaved == 0 -> "Synced. Nothing new from the web"
                     else -> listOfNotNull(
                         result.added.takeIf { it > 0 }?.let { if (it == 1) "1 link added" else "$it links added" },
                         result.updated.takeIf { it > 0 }?.let { if (it == 1) "1 link updated" else "$it links updated" },

@@ -32,6 +32,12 @@ class MainActivity : ComponentActivity() {
         if (container.inbox.isConfigured) WebInbox.checkSoon(this)
     }
 
+    override fun onStop() {
+        super.onStop()
+        // Leaving the app: send what changed here to the web page.
+        if (container.inbox.isConfigured) WebInbox.checkSoon(this)
+    }
+
     /** App already running (singleTask): a new share arrives here. */
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)

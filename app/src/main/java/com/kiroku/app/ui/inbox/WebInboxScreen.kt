@@ -38,6 +38,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -98,8 +99,8 @@ fun WebInboxScreen(vm: WebInboxViewModel, snackbar: SnackbarHostState, onBack: (
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             Text(
-                "Save links from your laptop's browser. They wait in your Supabase project until " +
-                    "Kiroku picks them up here: when you open the app, and about every 15 minutes.",
+                "See and save your links from a laptop's browser. Links saved there wait in your Supabase " +
+                    "project until Kiroku picks them up: when you open or leave the app, and about every 15 minutes.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = colors.onSurfaceVariant,
             )
@@ -174,6 +175,23 @@ fun WebInboxScreen(vm: WebInboxViewModel, snackbar: SnackbarHostState, onBack: (
                     color = colors.onSurfaceVariant,
                 )
 
+                Surface(color = colors.surfaceContainer, shape = MaterialTheme.shapes.medium) {
+                    Row(Modifier.fillMaxWidth().padding(start = 14.dp, end = 8.dp, top = 10.dp, bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text("Show all my links on the web page", style = MaterialTheme.typography.titleSmall)
+                            Text(
+                                "Keeps a copy of your links (titles, folders, tags, notes, contacts) in your Supabase " +
+                                    "project so the web page can show and edit them. Attached files stay on the phone. " +
+                                    "Turning this off removes the copy.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = colors.onSurfaceVariant,
+                            )
+                        }
+                        Spacer(Modifier.size(8.dp))
+                        Switch(checked = vm.mirror, onCheckedChange = vm::setMirror, enabled = !vm.busy)
+                    }
+                }
+
                 OutlinedButton(onClick = vm::checkNow, enabled = !vm.busy) {
                     if (vm.busy) {
                         CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
@@ -181,7 +199,7 @@ fun WebInboxScreen(vm: WebInboxViewModel, snackbar: SnackbarHostState, onBack: (
                         Icon(Icons.Outlined.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
                     }
                     Spacer(Modifier.size(8.dp))
-                    Text("Check for links now")
+                    Text("Sync now")
                 }
 
                 HorizontalDivider()
