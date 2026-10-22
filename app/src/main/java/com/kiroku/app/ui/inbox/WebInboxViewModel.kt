@@ -37,7 +37,7 @@ class WebInboxViewModel(
         private set
 
     /** "Show all my links on the web page". */
-    fun setMirror(on: Boolean) {
+    fun changeMirror(on: Boolean) {
         if (busy) return
         mirror = on
         busy = true

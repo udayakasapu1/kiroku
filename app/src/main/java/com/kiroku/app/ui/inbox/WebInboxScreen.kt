@@ -188,7 +188,7 @@ fun WebInboxScreen(vm: WebInboxViewModel, snackbar: SnackbarHostState, onBack: (
                             )
                         }
                         Spacer(Modifier.size(8.dp))
-                        Switch(checked = vm.mirror, onCheckedChange = vm::setMirror, enabled = !vm.busy)
+                        Switch(checked = vm.mirror, onCheckedChange = vm::changeMirror, enabled = !vm.busy)
                     }
                 }
 
