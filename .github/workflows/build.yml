@@ -56,7 +56,9 @@ jobs:
           curl -s localhost:3000/ > /dev/null || { cat postgrest.log; exit 1; }
 
       - name: Unit tests
-        run: ./gradlew --no-daemon testDebugUnitTest
+        run: |
+          set -o pipefail
+          ./gradlew --no-daemon testDebugUnitTest 2>&1 | tee gradle-test.log
 
       # One line per test class (shown as notes on the run), and the build fails if the
       # web inbox sync tests didn't actually run.
@@ -76,6 +78,12 @@ jobs:
                       print(f"::error title={name}.{case.get('name')}::failed")
               if name == 'WebInboxSyncTest' and (sk or t == 0):
                   print("::error title=WebInboxSyncTest::sync tests were skipped"); bad = True
+          # Compile errors (no test results then): show the first ones as notes on the run.
+          import os
+          if os.path.exists('gradle-test.log'):
+              errs = [l.strip() for l in open('gradle-test.log', errors='replace') if l.startswith('e: ') or 'FAILED' in l or 'What went wrong' in l]
+              for l in errs[:8]:
+                  print("::error title=Build::" + l.replace('/home/runner/work/kiroku/kiroku/', '')[:900])
           sys.exit(1 if bad else 0)
           PY
 
